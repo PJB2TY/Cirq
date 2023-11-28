@@ -14,9 +14,9 @@
 """Gates (unitary and non-unitary), operations, base types, and gate sets.
 """
 
-from cirq.ops.arithmetic_operation import ArithmeticGate, ArithmeticOperation
+from cirq.ops.arithmetic_operation import ArithmeticGate
 
-from cirq.ops.clifford_gate import CliffordGate, PauliTransform, SingleQubitCliffordGate
+from cirq.ops.clifford_gate import CliffordGate, SingleQubitCliffordGate
 
 from cirq.ops.dense_pauli_string import (
     BaseDensePauliString,
@@ -41,6 +41,7 @@ from cirq.ops.common_channels import (
     phase_flip,
     PhaseDampingChannel,
     PhaseFlipChannel,
+    R,
     reset,
     reset_each,
     ResetChannel,
@@ -87,7 +88,7 @@ from cirq.ops.fourier_transform import PhaseGradientGate, qft, QuantumFourierTra
 
 from cirq.ops.fsim_gate import FSimGate, PhasedFSimGate
 
-from cirq.ops.gate_features import InterchangeableQubitsGate, SingleQubitGate
+from cirq.ops.gate_features import InterchangeableQubitsGate
 
 from cirq.ops.gate_operation import GateOperation
 
@@ -119,6 +120,10 @@ from cirq.ops.projector import ProjectorString
 
 from cirq.ops.controlled_operation import ControlledOperation
 
+from cirq.ops.qubit_manager import BorrowableQubit, CleanQubit, QubitManager, SimpleQubitManager
+
+from cirq.ops.greedy_qubit_manager import GreedyQubitManager
+
 from cirq.ops.qubit_order import QubitOrder
 
 from cirq.ops.qubit_order_or_list import QubitOrderOrList
@@ -126,6 +131,7 @@ from cirq.ops.qubit_order_or_list import QubitOrderOrList
 from cirq.ops.matrix_gates import MatrixGate
 
 from cirq.ops.measure_util import (
+    M,
     measure,
     measure_each,
     measure_paulistring_terms,
@@ -188,7 +194,7 @@ from cirq.ops.swap_gates import (
     SwapPowGate,
 )
 
-from cirq.ops.tags import VirtualTag
+from cirq.ops.tags import RoutingSwapTag, VirtualTag
 
 from cirq.ops.three_qubit_gates import (
     CCNOT,
@@ -209,3 +215,5 @@ from cirq.ops.two_qubit_diagonal_gate import TwoQubitDiagonalGate
 from cirq.ops.wait_gate import wait, WaitGate
 
 from cirq.ops.state_preparation_channel import StatePreparationChannel
+
+from cirq.ops.control_values import AbstractControlValues, ProductOfSums, SumOfProducts

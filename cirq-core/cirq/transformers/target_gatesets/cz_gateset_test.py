@@ -231,8 +231,7 @@ def test_not_decompose_partial_czs():
 
 
 def test_avoids_decompose_when_matrix_available():
-    class OtherXX(cirq.testing.TwoQubitGate):
-        # coverage: ignore
+    class OtherXX(cirq.testing.TwoQubitGate):  # pragma: no cover
         def _has_unitary_(self) -> bool:
             return True
 
@@ -243,8 +242,7 @@ def test_avoids_decompose_when_matrix_available():
         def _decompose_(self, qubits):
             assert False
 
-    class OtherOtherXX(cirq.testing.TwoQubitGate):
-        # coverage: ignore
+    class OtherOtherXX(cirq.testing.TwoQubitGate):  # pragma: no cover
         def _has_unitary_(self) -> bool:
             return True
 
@@ -262,18 +260,18 @@ def test_avoids_decompose_when_matrix_available():
 
 
 def test_composite_gates_without_matrix():
-    class CompositeDummy(cirq.testing.SingleQubitGate):
+    class CompositeExample(cirq.testing.SingleQubitGate):
         def _decompose_(self, qubits):
             yield cirq.X(qubits[0])
             yield cirq.Y(qubits[0]) ** 0.5
 
-    class CompositeDummy2(cirq.testing.TwoQubitGate):
+    class CompositeExample2(cirq.testing.TwoQubitGate):
         def _decompose_(self, qubits):
             yield cirq.CZ(qubits[0], qubits[1])
-            yield CompositeDummy()(qubits[1])
+            yield CompositeExample()(qubits[1])
 
     q0, q1 = cirq.LineQubit.range(2)
-    circuit = cirq.Circuit(CompositeDummy()(q0), CompositeDummy2()(q0, q1))
+    circuit = cirq.Circuit(CompositeExample()(q0), CompositeExample2()(q0, q1))
     expected = cirq.Circuit(
         cirq.X(q0), cirq.Y(q0) ** 0.5, cirq.CZ(q0, q1), cirq.X(q1), cirq.Y(q1) ** 0.5
     )
@@ -290,11 +288,11 @@ def test_composite_gates_without_matrix():
 
 
 def test_unsupported_gate():
-    class UnsupportedDummy(cirq.testing.TwoQubitGate):
+    class UnsupportedExample(cirq.testing.TwoQubitGate):
         pass
 
     q0, q1 = cirq.LineQubit.range(2)
-    circuit = cirq.Circuit(UnsupportedDummy()(q0, q1))
+    circuit = cirq.Circuit(UnsupportedExample()(q0, q1))
     assert circuit == cirq.optimize_for_target_gateset(circuit, gateset=cirq.CZTargetGateset())
     with pytest.raises(ValueError, match='Unable to convert'):
         _ = cirq.optimize_for_target_gateset(

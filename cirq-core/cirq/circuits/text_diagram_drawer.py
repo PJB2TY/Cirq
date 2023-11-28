@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     import cirq
 
 _HorizontalLine = NamedTuple(
-    'HorizontalLine',
+    '_HorizontalLine',
     [
         ('y', Union[int, float]),
         ('x1', Union[int, float]),
@@ -54,7 +54,7 @@ _HorizontalLine = NamedTuple(
     ],
 )
 _VerticalLine = NamedTuple(
-    'VerticalLine',
+    '_VerticalLine',
     [
         ('x', Union[int, float]),
         ('y1', Union[int, float]),
@@ -63,7 +63,7 @@ _VerticalLine = NamedTuple(
         ('doubled', bool),
     ],
 )
-_DiagramText = NamedTuple('DiagramText', [('text', str), ('transposed_text', str)])
+_DiagramText = NamedTuple('_DiagramText', [('text', str), ('transposed_text', str)])
 
 
 def pick_charset(use_unicode: bool, emphasize: bool, doubled: bool) -> BoxDrawCharacterSet:
@@ -292,7 +292,7 @@ class TextDiagramDrawer:
         self,
         horizontal_spacing: int = 1,
         vertical_spacing: int = 1,
-        crossing_char: str = None,
+        crossing_char: Optional[str] = None,
         use_unicode_characters: bool = True,
     ) -> str:
         """Outputs text containing the diagram."""

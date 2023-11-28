@@ -17,7 +17,7 @@ import pytest
 import sympy
 
 import cirq
-from cirq.protocols.act_on_protocol_test import DummySimulationState
+from cirq.protocols.act_on_protocol_test import ExampleSimulationState
 
 H = np.array([[1, 1], [1, -1]]) * np.sqrt(0.5)
 HH = cirq.kron(H, H)
@@ -125,6 +125,7 @@ def test_specialized_control(input_gate, specialized_output):
     assert input_gate.controlled() == specialized_output
     assert input_gate.controlled(num_controls=1) == specialized_output
     assert input_gate.controlled(control_values=((1,),)) == specialized_output
+    assert input_gate.controlled(control_values=cirq.SumOfProducts([[1]])) == specialized_output
     assert input_gate.controlled(control_qid_shape=(2,)) == specialized_output
     assert np.allclose(
         cirq.unitary(specialized_output),
@@ -163,6 +164,28 @@ def test_specialized_control(input_gate, specialized_output):
         control_qid_shape=(2,)
     ).controlled(control_qid_shape=(4,)) != cirq.ControlledGate(
         input_gate, num_controls=3, control_qid_shape=(3, 2, 4)
+    )
+
+
+@pytest.mark.parametrize(
+    'input_gate, specialized_output',
+    [
+        (cirq.Z, cirq.CCZ),
+        (cirq.X, cirq.CCX),
+        (cirq.ZPowGate(exponent=0.5), cirq.CCZPowGate(exponent=0.5)),
+        (cirq.XPowGate(exponent=0.5), cirq.CCXPowGate(exponent=0.5)),
+    ],
+)
+def test_specialized_control_two_step(input_gate, specialized_output):
+    # Two-qubit control on the input gate gives the specialized output
+    assert input_gate.controlled().controlled() == specialized_output
+    assert input_gate.controlled(num_controls=2) == specialized_output
+    assert input_gate.controlled(control_values=[1, 1]) == specialized_output
+    assert input_gate.controlled(control_values=cirq.SumOfProducts([[1, 1]])) == specialized_output
+    assert input_gate.controlled(control_qid_shape=(2, 2)) == specialized_output
+    assert np.allclose(
+        cirq.unitary(specialized_output),
+        cirq.unitary(cirq.ControlledGate(input_gate, num_controls=2)),
     )
 
 
@@ -287,7 +310,7 @@ def test_h_str():
 
 def test_x_act_on_tableau():
     with pytest.raises(TypeError, match="Failed to act"):
-        cirq.act_on(cirq.X, DummySimulationState(), qubits=())
+        cirq.act_on(cirq.X, ExampleSimulationState(), qubits=())
     original_tableau = cirq.CliffordTableau(num_qubits=5, initial_state=31)
     flipped_tableau = cirq.CliffordTableau(num_qubits=5, initial_state=23)
 
@@ -336,7 +359,7 @@ class MinusOnePhaseGate(cirq.testing.SingleQubitGate):
 
 def test_y_act_on_tableau():
     with pytest.raises(TypeError, match="Failed to act"):
-        cirq.act_on(cirq.Y, DummySimulationState(), qubits=())
+        cirq.act_on(cirq.Y, ExampleSimulationState(), qubits=())
     original_tableau = cirq.CliffordTableau(num_qubits=5, initial_state=31)
     flipped_tableau = cirq.CliffordTableau(num_qubits=5, initial_state=23)
 
@@ -374,9 +397,9 @@ def test_y_act_on_tableau():
 
 def test_z_h_act_on_tableau():
     with pytest.raises(TypeError, match="Failed to act"):
-        cirq.act_on(cirq.Z, DummySimulationState(), qubits=())
+        cirq.act_on(cirq.Z, ExampleSimulationState(), qubits=())
     with pytest.raises(TypeError, match="Failed to act"):
-        cirq.act_on(cirq.H, DummySimulationState(), qubits=())
+        cirq.act_on(cirq.H, ExampleSimulationState(), qubits=())
     original_tableau = cirq.CliffordTableau(num_qubits=5, initial_state=31)
     flipped_tableau = cirq.CliffordTableau(num_qubits=5, initial_state=23)
 
@@ -427,7 +450,7 @@ def test_z_h_act_on_tableau():
 
 def test_cx_act_on_tableau():
     with pytest.raises(TypeError, match="Failed to act"):
-        cirq.act_on(cirq.CX, DummySimulationState(), qubits=())
+        cirq.act_on(cirq.CX, ExampleSimulationState(), qubits=())
     original_tableau = cirq.CliffordTableau(num_qubits=5, initial_state=31)
 
     state = cirq.CliffordTableauSimulationState(
@@ -471,7 +494,7 @@ def test_cx_act_on_tableau():
 
 def test_cz_act_on_tableau():
     with pytest.raises(TypeError, match="Failed to act"):
-        cirq.act_on(cirq.CZ, DummySimulationState(), qubits=())
+        cirq.act_on(cirq.CZ, ExampleSimulationState(), qubits=())
     original_tableau = cirq.CliffordTableau(num_qubits=5, initial_state=31)
 
     state = cirq.CliffordTableauSimulationState(
@@ -1077,6 +1100,7 @@ def test_approx_eq():
 
 def test_xpow_dim_3():
     x = cirq.XPowGate(dimension=3)
+    assert cirq.X != x
     # fmt: off
     expected = [
         [0, 0, 1],
@@ -1104,6 +1128,7 @@ def test_xpow_dim_3():
 
 def test_xpow_dim_4():
     x = cirq.XPowGate(dimension=4)
+    assert cirq.X != x
     # fmt: off
     expected = [
         [0, 0, 0, 1],
@@ -1136,6 +1161,7 @@ def test_zpow_dim_3():
     L = np.exp(2 * np.pi * 1j / 3)
     L2 = L**2
     z = cirq.ZPowGate(dimension=3)
+    assert cirq.Z != z
     # fmt: off
     expected = [
         [1, 0, 0],
@@ -1186,6 +1212,7 @@ def test_zpow_dim_3():
 
 def test_zpow_dim_4():
     z = cirq.ZPowGate(dimension=4)
+    assert cirq.Z != z
     # fmt: off
     expected = [
         [1, 0, 0, 0],

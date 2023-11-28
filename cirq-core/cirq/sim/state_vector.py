@@ -19,7 +19,7 @@ from typing import List, Mapping, Optional, Tuple, TYPE_CHECKING, Sequence
 import numpy as np
 
 from cirq import linalg, qis, value
-from cirq.sim import simulator
+from cirq.sim import simulator, simulation_utils
 
 if TYPE_CHECKING:
     import cirq
@@ -35,14 +35,13 @@ class StateVectorMixin:
         """Inits StateVectorMixin.
 
         Args:
-            qubit_map: A map from the Qubits in the Circuit to the the index
+            qubit_map: A map from the Qubits in the Circuit to the index
                 of this qubit for a canonical ordering. This canonical ordering
                 is used to define the state (see the state_vector() method).
             *args: Passed on to the class that this is mixed in with.
             **kwargs: Passed on to the class that this is mixed in with.
         """
-        # Reason for 'type: ignore': https://github.com/python/mypy/issues/5887
-        super().__init__(*args, **kwargs)  # type: ignore
+        super().__init__(*args, **kwargs)
         self._qubit_map = qubit_map or {}
         qid_shape = simulator._qubit_map_to_shape(self._qubit_map)
         self._qid_shape = None if qubit_map is None else qid_shape
@@ -57,7 +56,7 @@ class StateVectorMixin:
         return self._qid_shape
 
     @abc.abstractmethod
-    def state_vector(self, copy: Optional[bool] = False) -> np.ndarray:
+    def state_vector(self, copy: bool = False) -> np.ndarray:
         """Return the state vector (wave function).
 
         The vector is returned in the computational basis with these basis
@@ -101,30 +100,27 @@ class StateVectorMixin:
         Returns:
             A pretty string consisting of a sum of computational basis kets
             and non-zero floats of the specified accuracy."""
-        return qis.dirac_notation(
-            self.state_vector(copy=False), decimals, qid_shape=self._qid_shape
-        )
+        return qis.dirac_notation(self.state_vector(), decimals, qid_shape=self._qid_shape)
 
-    def density_matrix_of(self, qubits: List['cirq.Qid'] = None) -> np.ndarray:
+    def density_matrix_of(self, qubits: Optional[List['cirq.Qid']] = None) -> np.ndarray:
         r"""Returns the density matrix of the state.
 
-        Calculate the density matrix for the system on the list, qubits.
+        Calculate the density matrix for the system on the qubits provided.
         Any qubits not in the list that are present in self.state_vector() will
-        be traced out. If qubits is None the full density matrix for
+        be traced out. If qubits is None, the full density matrix for
         self.state_vector() is returned, given self.state_vector() follows
         standard Kronecker convention of numpy.kron.
 
-        For example:
-        self.state_vector() = np.array([1/np.sqrt(2), 1/np.sqrt(2)],
-            dtype=np.complex64)
-        qubits = None
-        gives us
-            $$
-            \rho = \begin{bmatrix}
-                        0.5 & 0.5 \\
-                        0.5 & 0.5
-                    \end{bmatrix}
-            $$
+        For example, if `self.state_vector()` returns
+        `np.array([1/np.sqrt(2), 1/np.sqrt(2)], dtype=np.complex64)`,
+        then `density_matrix_of(qubits = None)` gives us
+
+        $$
+        \rho = \begin{bmatrix}
+                    0.5 & 0.5 \\
+                    0.5 & 0.5
+                \end{bmatrix}
+        $$
 
         Args:
             qubits: list containing qubit IDs that you would like
@@ -140,7 +136,7 @@ class StateVectorMixin:
                 corresponding to the state.
         """
         return qis.density_matrix_from_state_vector(
-            self.state_vector(copy=False),
+            self.state_vector(),
             [self.qubit_map[q] for q in qubits] if qubits is not None else None,
             qid_shape=self._qid_shape,
         )
@@ -165,7 +161,7 @@ class StateVectorMixin:
                 corresponding to the state.
         """
         return qis.bloch_vector_from_state_vector(
-            self.state_vector(copy=False), self.qubit_map[qubit], qid_shape=self._qid_shape
+            self.state_vector(), self.qubit_map[qubit], qid_shape=self._qid_shape
         )
 
 
@@ -219,7 +215,8 @@ def sample_state_vector(
     prng = value.parse_random_state(seed)
 
     # Calculate the measurement probabilities.
-    probs = _probs(state_vector, indices, shape)
+    probs = (state_vector * state_vector.conj()).real
+    probs = simulation_utils.state_probabilities_by_indices(probs, indices, shape)
 
     # We now have the probability vector, correctly ordered, so sample over
     # it. Note that we us ints here, since numpy's choice does not allow for
@@ -292,7 +289,8 @@ def measure_state_vector(
     initial_shape = state_vector.shape
 
     # Calculate the measurement probabilities and then make the measurement.
-    probs = _probs(state_vector, indices, shape)
+    probs = (state_vector * state_vector.conj()).real
+    probs = simulation_utils.state_probabilities_by_indices(probs, indices, shape)
     result = prng.choice(len(probs), p=probs)
     ###measurement_bits = [(1 & (result >> i)) for i in range(len(indices))]
     # Convert to individual qudit measurements.
@@ -325,35 +323,3 @@ def measure_state_vector(
     assert out is not None
     # We mutate and return out, so mypy cannot identify that the out cannot be None.
     return measurement_bits, out
-
-
-def _probs(state: np.ndarray, indices: Sequence[int], qid_shape: Tuple[int, ...]) -> np.ndarray:
-    """Returns the probabilities for a measurement on the given indices."""
-    tensor = np.reshape(state, qid_shape)
-    # Calculate the probabilities for measuring the particular results.
-    if len(indices) == len(qid_shape):
-        # We're measuring every qudit, so no need for fancy indexing
-        probs = np.abs(tensor) ** 2
-        probs = np.transpose(probs, indices)
-        probs = np.reshape(probs, np.prod(probs.shape, dtype=np.int64))
-    else:
-        # Fancy indexing required
-        meas_shape = tuple(qid_shape[i] for i in indices)
-        probs = (
-            np.abs(
-                [
-                    tensor[
-                        linalg.slice_for_qubits_equal_to(
-                            indices, big_endian_qureg_value=b, qid_shape=qid_shape
-                        )
-                    ]
-                    for b in range(np.prod(meas_shape, dtype=np.int64))
-                ]
-            )
-            ** 2
-        )
-        probs = np.sum(probs, axis=tuple(range(1, len(probs.shape))))
-
-    # To deal with rounding issues, ensure that the probabilities sum to 1.
-    probs /= np.sum(probs)
-    return probs

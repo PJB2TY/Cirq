@@ -35,22 +35,14 @@ def test_state_vector_trial_result_repr():
     expected_repr = (
         "cirq.StateVectorTrialResult("
         "params=cirq.ParamResolver({'s': 1}), "
-        "measurements={'m': np.array([[1]], dtype=np.int32)}, "
+        "measurements={'m': np.array([[1]], dtype=np.dtype('int32'))}, "
         "final_simulator_state=cirq.StateVectorSimulationState("
-        "initial_state=np.array([0j, (1+0j)], dtype=np.complex64), "
+        "initial_state=np.array([0j, (1+0j)], dtype=np.dtype('complex64')), "
         "qubits=(cirq.NamedQubit('a'),), "
         "classical_data=cirq.ClassicalDataDictionaryStore()))"
     )
     assert repr(trial_result) == expected_repr
     assert eval(expected_repr) == trial_result
-
-
-def test_state_vector_simulator_state_repr():
-    with cirq.testing.assert_deprecated('no longer used', deadline='v0.16', count=4):
-        final_simulator_state = cirq.StateVectorSimulatorState(
-            qubit_map={cirq.NamedQubit('a'): 0}, state_vector=np.array([0, 1])
-        )
-        cirq.testing.assert_equivalent_repr(final_simulator_state)
 
 
 def test_state_vector_trial_result_equality():
@@ -143,20 +135,16 @@ def test_state_vector_trial_state_vector_is_copy():
     assert trial_result.state_vector(copy=True) is not final_simulator_state.target_tensor
 
 
-def test_implicit_copy_deprecated():
-    final_state_vector = np.array([0, 1], dtype=np.complex64)
-    qubit_map = {cirq.NamedQubit('a'): 0}
-    final_simulator_state = cirq.StateVectorSimulationState(
-        qubits=list(qubit_map), initial_state=final_state_vector
-    )
+def test_state_vector_trial_result_no_qubits():
+    initial_state_vector = np.array([1], dtype=np.complex64)
+    initial_state = initial_state_vector.reshape((2,) * 0)  # reshape as tensor for 0 qubits
+    final_simulator_state = cirq.StateVectorSimulationState(qubits=[], initial_state=initial_state)
     trial_result = cirq.StateVectorTrialResult(
         params=cirq.ParamResolver({}), measurements={}, final_simulator_state=final_simulator_state
     )
-
-    with cirq.testing.assert_deprecated(
-        "state_vector will not copy the state by default", deadline="v0.16"
-    ):
-        _ = trial_result.state_vector()
+    state_vector = trial_result.state_vector()
+    assert state_vector.shape == (1,)
+    assert np.array_equal(state_vector, initial_state_vector)
 
 
 def test_str_big():
@@ -169,6 +157,28 @@ def test_str_big():
     )
     result = cirq.StateVectorTrialResult(cirq.ParamResolver(), {}, final_simulator_state)
     assert 'output vector: [0.03125+0.j 0.03125+0.j 0.03125+0.j ..' in str(result)
+
+
+def test_str_qudit():
+    qutrit = cirq.LineQid(0, dimension=3)
+    final_simulator_state = cirq.StateVectorSimulationState(
+        prng=np.random.RandomState(0),
+        qubits=[qutrit],
+        initial_state=np.array([0, 0, 1]),
+        dtype=np.complex64,
+    )
+    result = cirq.StateVectorTrialResult(cirq.ParamResolver(), {}, final_simulator_state)
+    assert "|2⟩" in str(result)
+
+    ququart = cirq.LineQid(0, dimension=4)
+    final_simulator_state = cirq.StateVectorSimulationState(
+        prng=np.random.RandomState(0),
+        qubits=[ququart],
+        initial_state=np.array([0, 1, 0, 0]),
+        dtype=np.complex64,
+    )
+    result = cirq.StateVectorTrialResult(cirq.ParamResolver(), {}, final_simulator_state)
+    assert "|1⟩" in str(result)
 
 
 def test_pretty_print():

@@ -31,18 +31,16 @@ from typing import (
     Union,
     List,
 )
+from typing_extensions import Self
 
 import numpy as np
 
 from cirq import protocols, value
-from cirq.ops import raw_types, gate_features
+from cirq.ops import raw_types, gate_features, control_values as cv
 from cirq.type_workarounds import NotImplementedType
 
 if TYPE_CHECKING:
     import cirq
-
-
-TSelf = TypeVar('TSelf', bound='GateOperation')
 
 
 @value.value_equality(approximate=True)
@@ -73,8 +71,8 @@ class GateOperation(raw_types.Operation):
         """The qubits targeted by the operation."""
         return self._qubits
 
-    def with_qubits(self: TSelf, *new_qubits: 'cirq.Qid') -> TSelf:
-        return cast(TSelf, self.gate.on(*new_qubits))
+    def with_qubits(self, *new_qubits: 'cirq.Qid') -> Self:
+        return cast(Self, self.gate.on(*new_qubits))
 
     def with_gate(self, new_gate: 'cirq.Gate') -> 'cirq.Operation':
         if self.gate is new_gate:
@@ -162,7 +160,14 @@ class GateOperation(raw_types.Operation):
         return len(self._qubits)
 
     def _decompose_(self) -> 'cirq.OP_TREE':
-        return protocols.decompose_once_with_qubits(self.gate, self.qubits, NotImplemented)
+        return self._decompose_with_context_()
+
+    def _decompose_with_context_(
+        self, context: Optional['cirq.DecompositionContext'] = None
+    ) -> 'cirq.OP_TREE':
+        return protocols.decompose_once_with_qubits(
+            self.gate, self.qubits, NotImplemented, flatten=False, context=context
+        )
 
     def _pauli_expansion_(self) -> value.LinearDict[str]:
         getter = getattr(self.gate, '_pauli_expansion_', None)
@@ -209,6 +214,14 @@ class GateOperation(raw_types.Operation):
         getter = getattr(self.gate, '_mixture_', None)
         if getter is not None:
             return getter()
+        return NotImplemented
+
+    def _apply_channel_(
+        self, args: 'protocols.ApplyChannelArgs'
+    ) -> Union[np.ndarray, None, NotImplementedType]:
+        getter = getattr(self.gate, '_apply_channel_', None)
+        if getter is not None:
+            return getter(args)
         return NotImplemented
 
     def _has_kraus_(self) -> bool:
@@ -337,9 +350,6 @@ class GateOperation(raw_types.Operation):
     def _qasm_(self, args: 'protocols.QasmArgs') -> Optional[str]:
         return protocols.qasm(self.gate, args=args, qubits=self.qubits, default=None)
 
-    def _quil_(self, formatter: 'protocols.QuilFormatter') -> Optional[str]:
-        return protocols.quil(self.gate, qubits=self.qubits, formatter=formatter)
-
     def _equal_up_to_global_phase_(
         self, other: Any, atol: Union[int, float] = 1e-8
     ) -> Union[NotImplementedType, bool]:
@@ -352,7 +362,9 @@ class GateOperation(raw_types.Operation):
     def controlled_by(
         self,
         *control_qubits: 'cirq.Qid',
-        control_values: Optional[Sequence[Union[int, Collection[int]]]] = None,
+        control_values: Optional[
+            Union[cv.AbstractControlValues, Sequence[Union[int, Collection[int]]]]
+        ] = None,
     ) -> 'cirq.Operation':
         if len(control_qubits) == 0:
             return self

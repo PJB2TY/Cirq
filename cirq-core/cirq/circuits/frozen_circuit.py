@@ -12,11 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """An immutable version of the Circuit data structure."""
-from typing import TYPE_CHECKING, FrozenSet, Iterable, Iterator, Optional, Sequence, Tuple, Union
+from typing import (
+    AbstractSet,
+    FrozenSet,
+    Hashable,
+    Iterable,
+    Iterator,
+    Sequence,
+    Tuple,
+    TYPE_CHECKING,
+    Union,
+)
 
 import numpy as np
 
-from cirq import ops, protocols
+from cirq import protocols, _compat
 from cirq.circuits import AbstractCircuit, Alignment, Circuit
 from cirq.circuits.insert_strategy import InsertStrategy
 from cirq.type_workarounds import NotImplementedType
@@ -34,7 +44,10 @@ class FrozenCircuit(AbstractCircuit, protocols.SerializableByKey):
     """
 
     def __init__(
-        self, *contents: 'cirq.OP_TREE', strategy: 'cirq.InsertStrategy' = InsertStrategy.EARLIEST
+        self,
+        *contents: 'cirq.OP_TREE',
+        strategy: 'cirq.InsertStrategy' = InsertStrategy.EARLIEST,
+        tags: Sequence[Hashable] = (),
     ) -> None:
         """Initializes a frozen circuit.
 
@@ -47,87 +60,142 @@ class FrozenCircuit(AbstractCircuit, protocols.SerializableByKey):
             strategy: When initializing the circuit with operations and moments
                 from `contents`, this determines how the operations are packed
                 together.
+            tags: A sequence of any type of object that is useful to attach metadata
+                to this circuit as long as the type is hashable.  If you wish the
+                resulting circuit to be eventually serialized into JSON, you should
+                also restrict the tags to be JSON serializable.
         """
         base = Circuit(contents, strategy=strategy)
         self._moments = tuple(base.moments)
+        self._tags = tuple(tags)
 
-        # These variables are memoized when first requested.
-        self._num_qubits: Optional[int] = None
-        self._unitary: Optional[Union[np.ndarray, NotImplementedType]] = None
-        self._qid_shape: Optional[Tuple[int, ...]] = None
-        self._all_qubits: Optional[FrozenSet['cirq.Qid']] = None
-        self._all_operations: Optional[Tuple[ops.Operation, ...]] = None
-        self._has_measurements: Optional[bool] = None
-        self._all_measurement_key_objs: Optional[FrozenSet['cirq.MeasurementKey']] = None
-        self._are_all_measurements_terminal: Optional[bool] = None
-        self._control_keys: Optional[FrozenSet['cirq.MeasurementKey']] = None
+    @classmethod
+    def _from_moments(cls, moments: Iterable['cirq.Moment']) -> 'FrozenCircuit':
+        new_circuit = FrozenCircuit()
+        new_circuit._moments = tuple(moments)
+        return new_circuit
 
     @property
     def moments(self) -> Sequence['cirq.Moment']:
         return self._moments
 
-    def __hash__(self):
-        return hash((self.moments,))
+    def freeze(self) -> 'cirq.FrozenCircuit':
+        return self
 
-    # Memoized methods for commonly-retrieved properties.
+    def unfreeze(self, copy: bool = True) -> 'cirq.Circuit':
+        return Circuit.from_moments(*self)
 
+    @property
+    def tags(self) -> Tuple[Hashable, ...]:
+        """Returns a tuple of the Circuit's tags."""
+        return self._tags
+
+    @_compat.cached_property
+    def untagged(self) -> 'cirq.FrozenCircuit':
+        """Returns the underlying FrozenCircuit without any tags."""
+        return self._from_moments(self._moments) if self.tags else self
+
+    def with_tags(self, *new_tags: Hashable) -> 'cirq.FrozenCircuit':
+        """Creates a new tagged `FrozenCircuit` with `self.tags` and `new_tags` combined."""
+        if not new_tags:
+            return self
+        new_circuit = FrozenCircuit(tags=self.tags + new_tags)
+        new_circuit._moments = self._moments
+        return new_circuit
+
+    @_compat.cached_method
+    def __hash__(self) -> int:
+        # Explicitly cached for performance
+        return hash((self.moments, self.tags))
+
+    def __eq__(self, other):
+        super_eq = super().__eq__(other)
+        if super_eq is not True:
+            return super_eq
+        other_tags = other.tags if isinstance(other, FrozenCircuit) else ()
+        return self.tags == other_tags
+
+    def __getstate__(self):
+        # Don't save hash when pickling; see #3777.
+        state = self.__dict__
+        hash_cache = _compat._method_cache_name(self.__hash__)
+        if hash_cache in state:
+            state = state.copy()
+            del state[hash_cache]
+        return state
+
+    @_compat.cached_method
     def _num_qubits_(self) -> int:
-        if self._num_qubits is None:
-            self._num_qubits = len(self.all_qubits())
-        return self._num_qubits
+        return len(self.all_qubits())
 
+    @_compat.cached_method
     def _qid_shape_(self) -> Tuple[int, ...]:
-        if self._qid_shape is None:
-            self._qid_shape = super()._qid_shape_()
-        return self._qid_shape
+        return super()._qid_shape_()
 
+    @_compat.cached_method
+    def _has_unitary_(self) -> bool:
+        return super()._has_unitary_()
+
+    @_compat.cached_method
     def _unitary_(self) -> Union[np.ndarray, NotImplementedType]:
-        if self._unitary is None:
-            self._unitary = super()._unitary_()
-        return self._unitary
+        return super()._unitary_()
 
+    @_compat.cached_method
     def _is_measurement_(self) -> bool:
-        if self._has_measurements is None:
-            self._has_measurements = protocols.is_measurement(self.unfreeze())
-        return self._has_measurements
+        return protocols.is_measurement(self.unfreeze())
 
+    @_compat.cached_method
     def all_qubits(self) -> FrozenSet['cirq.Qid']:
-        if self._all_qubits is None:
-            self._all_qubits = super().all_qubits()
-        return self._all_qubits
+        return super().all_qubits()
+
+    @_compat.cached_property
+    def _all_operations(self) -> Tuple['cirq.Operation', ...]:
+        return tuple(super().all_operations())
 
     def all_operations(self) -> Iterator['cirq.Operation']:
-        if self._all_operations is None:
-            self._all_operations = tuple(super().all_operations())
         return iter(self._all_operations)
 
     def has_measurements(self) -> bool:
-        if self._has_measurements is None:
-            self._has_measurements = super().has_measurements()
-        return self._has_measurements
+        return self._is_measurement_()
 
+    @_compat.cached_method
     def all_measurement_key_objs(self) -> FrozenSet['cirq.MeasurementKey']:
-        if self._all_measurement_key_objs is None:
-            self._all_measurement_key_objs = super().all_measurement_key_objs()
-        return self._all_measurement_key_objs
+        return super().all_measurement_key_objs()
 
     def _measurement_key_objs_(self) -> FrozenSet['cirq.MeasurementKey']:
         return self.all_measurement_key_objs()
 
+    @_compat.cached_method
     def _control_keys_(self) -> FrozenSet['cirq.MeasurementKey']:
-        if self._control_keys is None:
-            self._control_keys = super()._control_keys_()
-        return self._control_keys
+        return super()._control_keys_()
 
+    @_compat.cached_method
     def are_all_measurements_terminal(self) -> bool:
-        if self._are_all_measurements_terminal is None:
-            self._are_all_measurements_terminal = super().are_all_measurements_terminal()
-        return self._are_all_measurements_terminal
+        return super().are_all_measurements_terminal()
 
-    # End of memoized methods.
-
+    @_compat.cached_method
     def all_measurement_key_names(self) -> FrozenSet[str]:
         return frozenset(str(key) for key in self.all_measurement_key_objs())
+
+    @_compat.cached_method
+    def _is_parameterized_(self) -> bool:
+        return super()._is_parameterized_() or any(
+            protocols.is_parameterized(tag) for tag in self.tags
+        )
+
+    @_compat.cached_method
+    def _parameter_names_(self) -> AbstractSet[str]:
+        tag_params = {name for tag in self.tags for name in protocols.parameter_names(tag)}
+        return super()._parameter_names_() | tag_params
+
+    def _resolve_parameters_(
+        self, resolver: 'cirq.ParamResolver', recursive: bool
+    ) -> 'cirq.FrozenCircuit':
+        resolved_circuit = super()._resolve_parameters_(resolver, recursive)
+        resolved_tags = [
+            protocols.resolve_parameters(tag, resolver, recursive) for tag in self.tags
+        ]
+        return resolved_circuit.with_tags(*resolved_tags)
 
     def _measurement_key_names_(self) -> FrozenSet[str]:
         return self.all_measurement_key_names()
@@ -154,15 +222,19 @@ class FrozenCircuit(AbstractCircuit, protocols.SerializableByKey):
         except:
             return NotImplemented
 
-    def _with_sliced_moments(self, moments: Iterable['cirq.Moment']) -> 'FrozenCircuit':
-        new_circuit = FrozenCircuit()
-        new_circuit._moments = tuple(moments)
-        return new_circuit
+    def _repr_args(self) -> str:
+        moments_repr = super()._repr_args()
+        tag_repr = ','.join(_compat.proper_repr(t) for t in self._tags)
+        return f'{moments_repr}, tags=[{tag_repr}]' if self.tags else moments_repr
 
-    def _resolve_parameters_(
-        self, resolver: 'cirq.ParamResolver', recursive: bool
-    ) -> 'cirq.FrozenCircuit':
-        return self.unfreeze()._resolve_parameters_(resolver, recursive).freeze()
+    def _json_dict_(self):
+        attribute_names = ['moments', 'tags'] if self.tags else ['moments']
+        ret = protocols.obj_to_dict_helper(self, attribute_names)
+        return ret
+
+    @classmethod
+    def _from_json_dict_(cls, moments, *, tags=(), **kwargs):
+        return cls(moments, strategy=InsertStrategy.EARLIEST, tags=tags)
 
     def concat_ragged(
         *circuits: 'cirq.AbstractCircuit', align: Union['cirq.Alignment', str] = Alignment.LEFT

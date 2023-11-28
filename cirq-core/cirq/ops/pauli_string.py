@@ -41,6 +41,7 @@ from typing import (
 import numpy as np
 import sympy
 
+import cirq
 from cirq import value, protocols, linalg, qis
 from cirq._doc import document
 from cirq._import import LazyLoader
@@ -77,7 +78,7 @@ PAULI_STRING_LIKE = Union[
     Iterable,  # of PAULI_STRING_LIKE, but mypy doesn't do recursive types yet.
 ]
 document(
-    PAULI_STRING_LIKE,  # type: ignore
+    PAULI_STRING_LIKE,
     """A `cirq.PauliString` or a value that can easily be converted into one.
 
     Complex numbers turn into the coefficient of an empty Pauli string.
@@ -91,9 +92,9 @@ document(
     """,
 )
 
-PAULI_GATE_LIKE = Union['cirq.Pauli', 'cirq.IdentityGate', str, int,]
+PAULI_GATE_LIKE = Union['cirq.Pauli', 'cirq.IdentityGate', str, int]
 document(
-    PAULI_GATE_LIKE,  # type: ignore
+    PAULI_GATE_LIKE,
     """An object that can be interpreted as a Pauli gate.
 
     Allowed values are:
@@ -139,26 +140,19 @@ class PauliString(raw_types.Operation, Generic[TKey]):
     PauliStrings can be constructed via various different ways, some examples are
     given as follows:
 
-        >>> a, b, c = cirq.LineQubit.range(3)
-
-        >>> print(cirq.PauliString([cirq.X(a), cirq.X(a)]))
-        I
-
-        >>> print(cirq.PauliString(-1, cirq.X(a), cirq.Y(b), cirq.Z(c)))
-        -X(0)*Y(1)*Z(2)
-
-        >>> -1 * cirq.X(a) * cirq.Y(b) * cirq.Z(c)
-        -X(0) * Y(1) * Z(2)
-
-        >>> print(cirq.PauliString({a: cirq.X}, [-2, 3, cirq.Y(a)]))
-        -6j*Z(0)
-
-        >>> print(cirq.PauliString({a: cirq.I, b: cirq.X}))
-        X(1)
-
-        >>> print(cirq.PauliString({a: cirq.Y},
-        ...                        qubit_pauli_map={a: cirq.X}))
-        1j*Z(0)
+    >>> a, b, c = cirq.LineQubit.range(3)
+    >>> print(cirq.PauliString([cirq.X(a), cirq.X(a)]))
+    I
+    >>> print(cirq.PauliString(-1, cirq.X(a), cirq.Y(b), cirq.Z(c)))
+    -X(q(0))*Y(q(1))*Z(q(2))
+    >>> print(-1 * cirq.X(a) * cirq.Y(b) * cirq.Z(c))
+    -X(q(0))*Y(q(1))*Z(q(2))
+    >>> print(cirq.PauliString({a: cirq.X}, [-2, 3, cirq.Y(a)]))
+    -6j*Z(q(0))
+    >>> print(cirq.PauliString({a: cirq.I, b: cirq.X}))
+    X(q(1))
+    >>> print(cirq.PauliString({a: cirq.Y}, qubit_pauli_map={a: cirq.X}))
+    1j*Z(q(0))
 
     Note that `cirq.PauliString`s are immutable objects. If you need a mutable version
     of pauli strings, see `cirq.MutablePauliString`.
@@ -248,12 +242,14 @@ class PauliString(raw_types.Operation, Generic[TKey]):
     def get(self, key: Any, default: TDefault) -> Union[pauli_gates.Pauli, TDefault]:
         pass
 
-    def get(self, key: Any, default: TDefault = None) -> Union[pauli_gates.Pauli, TDefault, None]:
+    def get(
+        self, key: Any, default: Optional[TDefault] = None
+    ) -> Union[pauli_gates.Pauli, TDefault, None]:
         """Returns the `cirq.Pauli` operation acting on qubit `key` or `default` if none exists."""
         return self._qubit_pauli_map.get(key, default)
 
     @overload
-    def __mul__(  # type: ignore
+    def __mul__(
         self, other: 'cirq.PauliString[TKeyOther]'
     ) -> 'cirq.PauliString[Union[TKey, TKeyOther]]':
         pass
@@ -498,15 +494,21 @@ class PauliString(raw_types.Operation, Generic[TKey]):
                 in which the matrix representation of the Pauli string is to
                 be computed. Qubits absent from `self.qubits` are acted on by
                 the identity. Defaults to `self.qubits`.
+
+        Raises:
+            NotImplementedError: If this PauliString is parameterized.
         """
         qubits = self.qubits if qubits is None else qubits
         factors = [self.get(q, default=identity.I) for q in qubits]
+        if cirq.is_parameterized(self):
+            raise NotImplementedError('Cannot express as matrix when parameterized')
+        assert isinstance(self.coefficient, complex)
         return linalg.kron(self.coefficient, *[protocols.unitary(f) for f in factors])
 
     def _has_unitary_(self) -> bool:
         if self._is_parameterized_():
             return False
-        return abs(1 - abs(self.coefficient)) < 1e-6
+        return abs(1 - abs(cast(complex, self.coefficient))) < 1e-6
 
     def _unitary_(self) -> Optional[np.ndarray]:
         if not self._has_unitary_():
@@ -516,6 +518,7 @@ class PauliString(raw_types.Operation, Generic[TKey]):
     def _apply_unitary_(self, args: 'protocols.ApplyUnitaryArgs'):
         if not self._has_unitary_():
             return None
+        assert isinstance(self.coefficient, complex)
         if self.coefficient != 1:
             args.target_tensor *= self.coefficient
         return protocols.apply_unitaries([self[q].on(q) for q in self.qubits], self.qubits, args)
@@ -736,7 +739,8 @@ class PauliString(raw_types.Operation, Generic[TKey]):
 
         while any(result.shape):
             result = np.trace(result, axis1=0, axis2=len(result.shape) // 2)
-        return result * self.coefficient
+
+        return float(np.real(result * self.coefficient))
 
     def zip_items(
         self, other: 'cirq.PauliString[TKey]'
@@ -966,11 +970,11 @@ class PauliString(raw_types.Operation, Generic[TKey]):
         Examples:
             >>> a, b = cirq.LineQubit.range(2)
             >>> print(cirq.X(a).conjugated_by(cirq.CZ(a, b)))
-            X(0)*Z(1)
+            X(q(0))*Z(q(1))
             >>> print(cirq.X(a).conjugated_by(cirq.S(a)))
-            -Y(0)
+            -Y(q(0))
             >>> print(cirq.X(a).conjugated_by([cirq.H(a), cirq.CNOT(a, b)]))
-            Z(0)*X(1)
+            Z(q(0))*X(q(1))
 
         Returns:
             The Pauli string conjugated by the given Clifford operation.
@@ -1383,8 +1387,7 @@ class MutablePauliString(Generic[TKey]):
                     if gate.invert1:
                         self.inplace_after(gate.pauli0(q0))
 
-                else:
-                    # coverage: ignore
+                else:  # pragma: no cover
                     raise NotImplementedError(f"Unrecognized decomposed Clifford: {op!r}")
         return self
 
@@ -1418,7 +1421,7 @@ class MutablePauliString(Generic[TKey]):
             and not isinstance(other, linear_combinations.PauliSum)
         ):
             if sign == +1:
-                other = reversed(list(other))
+                other = iter(reversed(list(other)))
             for item in other:
                 if self._imul_helper(cast(PAULI_STRING_LIKE, item), sign) is NotImplemented:
                     return NotImplemented
@@ -1613,7 +1616,7 @@ def _pass_single_clifford_gate_over(
     after_to_before: bool = False,
 ) -> bool:
     if qubit not in pauli_map:
-        return False  # coverage: ignore
+        return False  # pragma: no cover
     if not after_to_before:
         gate **= -1
     pauli, inv = gate.pauli_tuple(pauli_map[qubit])
@@ -1706,4 +1709,4 @@ def _pauli_like_to_pauli_int(key: Any, pauli_gate_like: PAULI_GATE_LIKE):
             f"But the value isn't in "
             f"{set(PAULI_GATE_LIKE_TO_INDEX_MAP.keys())!r}"
         )
-    return cast(int, pauli_int)
+    return pauli_int

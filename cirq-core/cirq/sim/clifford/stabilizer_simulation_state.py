@@ -13,13 +13,12 @@
 # limitations under the License.
 
 import abc
-from typing import Any, cast, Dict, Generic, List, Optional, Sequence, TYPE_CHECKING, TypeVar, Union
+from typing import Any, cast, Generic, Optional, Sequence, TYPE_CHECKING, TypeVar, Union
 
 import numpy as np
 import sympy
 
 from cirq import linalg, ops, protocols
-from cirq._compat import deprecated_parameter
 from cirq.ops import common_gates, global_phase_op, matrix_gates, swap_gates
 from cirq.ops.clifford_gate import SingleQubitCliffordGate
 from cirq.protocols import has_unitary, num_qubits, unitary
@@ -38,24 +37,11 @@ class StabilizerSimulationState(
 ):
     """Abstract wrapper around a stabilizer state for the act_on protocol."""
 
-    @deprecated_parameter(
-        deadline='v0.16',
-        fix='Use kwargs instead of positional args',
-        parameter_desc='args',
-        match=lambda args, kwargs: len(args) > 1,
-    )
-    @deprecated_parameter(
-        deadline='v0.16',
-        fix='Replace log_of_measurement_results with'
-        ' classical_data=cirq.ClassicalDataDictionaryStore(_records=logs).',
-        parameter_desc='log_of_measurement_results',
-        match=lambda args, kwargs: 'log_of_measurement_results' in kwargs,
-    )
     def __init__(
         self,
+        *,
         state: TStabilizerState,
         prng: Optional[np.random.RandomState] = None,
-        log_of_measurement_results: Optional[Dict[str, List[int]]] = None,
         qubits: Optional[Sequence['cirq.Qid']] = None,
         classical_data: Optional['cirq.ClassicalDataStore'] = None,
     ):
@@ -69,21 +55,10 @@ class StabilizerSimulationState(
             qubits: Determines the canonical ordering of the qubits. This
                 is often used in specifying the initial state, i.e. the
                 ordering of the computational basis states.
-            log_of_measurement_results: A mutable object that measurements are
-                being recorded into.
             classical_data: The shared classical data container for this
                 simulation.
         """
-        if log_of_measurement_results is not None:
-            super().__init__(
-                state=state,
-                prng=prng,
-                qubits=qubits,
-                log_of_measurement_results=log_of_measurement_results,
-                classical_data=classical_data,
-            )
-        else:
-            super().__init__(state=state, prng=prng, qubits=qubits, classical_data=classical_data)
+        super().__init__(state=state, prng=prng, qubits=qubits, classical_data=classical_data)
 
     @property
     def state(self) -> TStabilizerState:
@@ -97,7 +72,7 @@ class StabilizerSimulationState(
             strats.append(self._strat_decompose)
             strats.append(self._strat_act_from_single_qubit_decompose)
         for strat in strats:
-            result = strat(action, qubits)  # type: ignore
+            result = strat(action, qubits)
             if result is True:
                 return True
             assert result is NotImplemented, str(result)
@@ -109,7 +84,7 @@ class StabilizerSimulationState(
     ):
         """Apply a SWAP gate"""
         if exponent % 1 != 0:
-            raise ValueError('Swap exponent must be integer')  # coverage: ignore
+            raise ValueError('Swap exponent must be integer')  # pragma: no cover
         self._state.apply_cx(control_axis, target_axis)
         self._state.apply_cx(target_axis, control_axis, exponent, global_shift)
         self._state.apply_cx(control_axis, target_axis)
@@ -147,7 +122,7 @@ class StabilizerSimulationState(
         if mixture is None:
             return NotImplemented
         if not all(linalg.is_unitary(m) for _, m in mixture):
-            return NotImplemented  # coverage: ignore
+            return NotImplemented  # pragma: no cover
         probabilities, unitaries = zip(*mixture)
         index = self.prng.choice(len(unitaries), p=probabilities)
         return self._strat_act_from_single_qubit_decompose(

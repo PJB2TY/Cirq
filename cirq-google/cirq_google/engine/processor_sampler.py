@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Sequence, TYPE_CHECKING, Union, cast
+from typing import Optional, Sequence, TYPE_CHECKING, Union, cast
 
 import cirq
+import duet
 
 if TYPE_CHECKING:
     import cirq_google as cg
@@ -23,53 +24,64 @@ if TYPE_CHECKING:
 class ProcessorSampler(cirq.Sampler):
     """A wrapper around AbstractProcessor to implement the cirq.Sampler interface."""
 
-    def __init__(self, *, processor: 'cg.engine.AbstractProcessor'):
+    def __init__(
+        self,
+        *,
+        processor: 'cg.engine.AbstractProcessor',
+        run_name: str = "",
+        device_config_name: str = "",
+    ):
         """Inits ProcessorSampler.
+
+        Either both `run_name` and `device_config_name` must be set, or neither of
+        them must be set. If none of them are set, a default internal device configuration
+        will be used.
 
         Args:
             processor: AbstractProcessor instance to use.
-        """
-        self._processor = processor
+            run_name: A unique identifier representing an automation run for the
+                specified processor. An Automation Run contains a collection of
+                device configurations for a processor.
+            device_config_name: An identifier used to select the processor configuration
+                utilized to run the job. A configuration identifies the set of
+                available qubits, couplers, and supported gates in the processor.
 
-    def run_sweep(
+        Raises:
+            ValueError: If  only one of `run_name` and `device_config_name` are specified.
+        """
+        if bool(run_name) ^ bool(device_config_name):
+            raise ValueError('Cannot specify only one of `run_name` and `device_config_name`')
+
+        self._processor = processor
+        self._run_name = run_name
+        self._device_config_name = device_config_name
+
+    async def run_sweep_async(
         self, program: 'cirq.AbstractCircuit', params: cirq.Sweepable, repetitions: int = 1
     ) -> Sequence['cg.EngineResult']:
-        job = self._processor.run_sweep(program=program, params=params, repetitions=repetitions)
-        return job.results()
+        job = await self._processor.run_sweep_async(
+            program=program,
+            params=params,
+            repetitions=repetitions,
+            run_name=self._run_name,
+            device_config_name=self._device_config_name,
+        )
+        return await job.results_async()
 
-    def run_batch(
+    run_sweep = duet.sync(run_sweep_async)
+
+    async def run_batch_async(
         self,
         programs: Sequence[cirq.AbstractCircuit],
-        params_list: Optional[List[cirq.Sweepable]] = None,
-        repetitions: Union[int, List[int]] = 1,
+        params_list: Optional[Sequence[cirq.Sweepable]] = None,
+        repetitions: Union[int, Sequence[int]] = 1,
     ) -> Sequence[Sequence['cg.EngineResult']]:
-        """Runs the supplied circuits.
-
-        In order to gain a speedup from using this method instead of other run
-        methods, the following conditions must be satisfied:
-            1. All circuits must measure the same set of qubits.
-            2. The number of circuit repetitions must be the same for all
-               circuits. That is, the `repetitions` argument must be an integer,
-               or else a list with identical values.
-        """
-        if isinstance(repetitions, List) and len(programs) != len(repetitions):
-            raise ValueError(
-                'len(programs) and len(repetitions) must match. '
-                f'Got {len(programs)} and {len(repetitions)}.'
-            )
-        if isinstance(repetitions, int) or len(set(repetitions)) == 1:
-            # All repetitions are the same so batching can be done efficiently
-            if isinstance(repetitions, List):
-                repetitions = repetitions[0]
-            job = self._processor.run_batch(
-                programs=programs, params_list=params_list, repetitions=repetitions
-            )
-            return job.batched_results()
-        # Varying number of repetitions so no speedup
         return cast(
             Sequence[Sequence['cg.EngineResult']],
-            super().run_batch(programs, params_list, repetitions),
+            await super().run_batch_async(programs, params_list, repetitions),
         )
+
+    run_batch = duet.sync(run_batch_async)
 
     @property
     def processor(self) -> 'cg.engine.AbstractProcessor':

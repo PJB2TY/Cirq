@@ -16,16 +16,10 @@ from typing import Tuple, Optional, List, Union, Generic, TypeVar, Dict
 
 from unittest.mock import create_autospec, Mock
 import pytest
-from pyquil import Program  # type: ignore
-from pyquil.quantum_processor import AbstractQuantumProcessor, NxQuantumProcessor  # type: ignore
-from pyquil.api import (
-    QAM,
-    QuantumComputer,
-    QuantumExecutable,
-    QAMExecutionResult,
-    EncryptedProgram,
-)  # type: ignore
-from pyquil.api._abstract_compiler import AbstractCompiler  # type: ignore
+from pyquil import Program
+from pyquil.quantum_processor import AbstractQuantumProcessor, NxQuantumProcessor
+from pyquil.api import QAM, QuantumComputer, QuantumExecutable, QAMExecutionResult, EncryptedProgram
+from pyquil.api._abstract_compiler import AbstractCompiler
 from qcs_api_client.client._configuration.settings import QCSClientConfigurationSettings
 from qcs_api_client.client._configuration import (
     QCSClientConfiguration,
@@ -35,28 +29,6 @@ import networkx as nx
 import cirq
 import sympy
 import numpy as np
-
-
-def pytest_collection_modifyitems(config, items):
-    # coverage: ignore
-    # do not skip integration tests if --rigetti-integration option passed
-    if config.getoption('--rigetti-integration'):
-        return
-    # do not skip integration tests rigetti_integration marker explicitly passed.
-    if 'rigetti_integration' in config.getoption('-m'):
-        return
-    # otherwise skip all tests marked "rigetti_integration".
-    skip_rigetti_integration = pytest.mark.skip(reason="need --rigetti-integration option to run")
-    for item in items:
-        if "rigetti_integration" in item.keywords:
-            item.add_marker(skip_rigetti_integration)
-
-
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers", "rigetti_integration: tests that connect to Quil compiler or QVM."
-    )
-
 
 T = TypeVar("T")
 
@@ -69,7 +41,7 @@ class MockQAM(QAM, Generic[T]):
         self._run_count = 0
         self._mock_results: Dict[str, np.ndarray] = {}
 
-    def execute(self, executable: QuantumExecutable) -> T:
+    def execute(self, executable: QuantumExecutable) -> T:  # type: ignore[empty-body]
         pass
 
     def run(self, program: QuantumExecutable) -> QAMExecutionResult:
@@ -196,9 +168,7 @@ class MockQPUImplementer:
                 executable=program, readout_data=qam._mock_results  # type: ignore
             )
 
-        quantum_computer.qam.run = Mock(  # type: ignore
-            quantum_computer.qam.run, side_effect=run  # type: ignore
-        )
+        quantum_computer.qam.run = Mock(quantum_computer.qam.run, side_effect=run)  # type: ignore
         return quantum_computer
 
 

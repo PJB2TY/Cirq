@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 import cirq
-from cirq.protocols.act_on_protocol_test import DummySimulationState
+from cirq.protocols.act_on_protocol_test import ExampleSimulationState
 from cirq.testing import EqualsTester, assert_allclose_up_to_global_phase
 
 _bools = (False, True)
@@ -47,7 +47,7 @@ def _assert_no_collision(gate) -> None:
 
 
 def _all_rotations():
-    for (pauli, flip) in itertools.product(_paulis, _bools):
+    for pauli, flip in itertools.product(_paulis, _bools):
         yield (pauli, flip)
 
 
@@ -79,13 +79,6 @@ def test_init_from_xz(trans_x, trans_z):
     assert gate.pauli_tuple(cirq.Z) == trans_z
     _assert_not_mirror(gate)
     _assert_no_collision(gate)
-
-
-def test_transform_deprecated():
-    gate = cirq.SingleQubitCliffordGate.from_xz_map((cirq.X, True), (cirq.Y, False))
-    with cirq.testing.assert_deprecated('pauli_tuple', deadline='v0.16', count=4):
-        assert gate.transform(cirq.X).to == cirq.X
-        assert gate.transform(cirq.Z).to == cirq.Y
 
 
 def test_dense_pauli_string():
@@ -329,16 +322,22 @@ def test_eq_ne_and_hash():
 
 
 @pytest.mark.parametrize(
-    'gate,rep',
+    'gate',
     (
-        (cirq.SingleQubitCliffordGate.I, 'cirq.SingleQubitCliffordGate(X:+X, Y:+Y, Z:+Z)'),
-        (cirq.SingleQubitCliffordGate.H, 'cirq.SingleQubitCliffordGate(X:+Z, Y:-Y, Z:+X)'),
-        (cirq.SingleQubitCliffordGate.X, 'cirq.SingleQubitCliffordGate(X:+X, Y:-Y, Z:-Z)'),
-        (cirq.SingleQubitCliffordGate.X_sqrt, 'cirq.SingleQubitCliffordGate(X:+X, Y:+Z, Z:-Y)'),
+        cirq.SingleQubitCliffordGate.I,
+        cirq.SingleQubitCliffordGate.H,
+        cirq.SingleQubitCliffordGate.X,
+        cirq.SingleQubitCliffordGate.X_sqrt,
     ),
 )
-def test_repr(gate, rep):
-    assert repr(gate) == rep
+def test_repr_gate(gate):
+    cirq.testing.assert_equivalent_repr(gate)
+
+
+def test_repr_operation():
+    cirq.testing.assert_equivalent_repr(
+        cirq.SingleQubitCliffordGate.from_pauli(cirq.Z).on(cirq.LineQubit(2))
+    )
 
 
 @pytest.mark.parametrize(
@@ -481,7 +480,6 @@ def test_parses_single_qubit_gate(gate):
     itertools.product(_all_clifford_gates(), _paulis, (1.0, 0.25, 0.5, -0.5)),
 )
 def test_commutes_pauli(gate, pauli, half_turns):
-    # TODO(#4328) cirq.X**1 should be _PauliX instead of XPowGate
     pauli_gate = pauli if half_turns == 1 else pauli**half_turns
     q0 = cirq.NamedQubit('q0')
     mat = cirq.Circuit(gate(q0), pauli_gate(q0)).unitary()
@@ -492,7 +490,6 @@ def test_commutes_pauli(gate, pauli, half_turns):
 
 
 def test_to_clifford_tableau_util_function():
-
     tableau = cirq.ops.clifford_gate._to_clifford_tableau(
         x_to=(cirq.X, False), z_to=(cirq.Z, False)
     )
@@ -881,7 +878,7 @@ def test_clifford_gate_act_on_ch_form():
 
 def test_clifford_gate_act_on_fail():
     with pytest.raises(TypeError, match="Failed to act"):
-        cirq.act_on(cirq.CliffordGate.X, DummySimulationState(), qubits=())
+        cirq.act_on(cirq.CliffordGate.X, ExampleSimulationState(), qubits=())
 
 
 def test_all_single_qubit_clifford_unitaries():

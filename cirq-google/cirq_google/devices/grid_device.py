@@ -14,9 +14,23 @@
 
 """Device object representing Google devices with a grid qubit layout."""
 
-from typing import Any, Collection, Dict, List, Optional, Sequence, Set, Tuple, Type, Union, cast
+from typing import (
+    Any,
+    Collection,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
+    Union,
+    cast,
+)
 import re
 import warnings
+from dataclasses import dataclass
 
 import cirq
 from cirq_google import ops
@@ -26,16 +40,112 @@ from cirq_google.devices import known_devices
 from cirq_google.experimental import ops as experimental_ops
 
 
-SYC_GATE_FAMILY = cirq.GateFamily(ops.SYC)
-SQRT_ISWAP_GATE_FAMILY = cirq.GateFamily(cirq.SQRT_ISWAP)
-SQRT_ISWAP_INV_GATE_FAMILY = cirq.GateFamily(cirq.SQRT_ISWAP_INV)
-CZ_GATE_FAMILY = cirq.GateFamily(cirq.CZ)
-PHASED_XZ_GATE_FAMILY = cirq.GateFamily(cirq.PhasedXZGate)
-VIRTUAL_ZPOW_GATE_FAMILY = cirq.GateFamily(cirq.ZPowGate, tags_to_ignore=[ops.PhysicalZTag()])
-PHYSICAL_ZPOW_GATE_FAMILY = cirq.GateFamily(cirq.ZPowGate, tags_to_accept=[ops.PhysicalZTag()])
-COUPLER_PULSE_GATE_FAMILY = cirq.GateFamily(experimental_ops.CouplerPulse)
-MEASUREMENT_GATE_FAMILY = cirq.GateFamily(cirq.MeasurementGate)
-WAIT_GATE_FAMILY = cirq.GateFamily(cirq.WaitGate)
+# Gate family constants used in various parts of GridDevice logic.
+_PHASED_XZ_GATE_FAMILY = cirq.GateFamily(cirq.PhasedXZGate)
+_MEASUREMENT_GATE_FAMILY = cirq.GateFamily(cirq.MeasurementGate)
+_WAIT_GATE_FAMILY = cirq.GateFamily(cirq.WaitGate)
+
+_SYC_FSIM_GATE_FAMILY = ops.FSimGateFamily(gates_to_accept=[ops.SYC])
+_SQRT_ISWAP_FSIM_GATE_FAMILY = ops.FSimGateFamily(gates_to_accept=[cirq.SQRT_ISWAP])
+_SQRT_ISWAP_INV_FSIM_GATE_FAMILY = ops.FSimGateFamily(gates_to_accept=[cirq.SQRT_ISWAP_INV])
+_CZ_FSIM_GATE_FAMILY = ops.FSimGateFamily(gates_to_accept=[cirq.CZ])
+
+
+# TODO(#5050) Add GlobalPhaseGate
+# Target gates of `cirq_google.GoogleCZTargetGateset`.
+_CZ_TARGET_GATES = [_CZ_FSIM_GATE_FAMILY, _PHASED_XZ_GATE_FAMILY, _MEASUREMENT_GATE_FAMILY]
+# Target gates of `cirq_google.SycamoreTargetGateset`.
+_SYC_TARGET_GATES = [_SYC_FSIM_GATE_FAMILY, _PHASED_XZ_GATE_FAMILY, _MEASUREMENT_GATE_FAMILY]
+# Target gates of `cirq.SqrtIswapTargetGateset`
+_SQRT_ISWAP_TARGET_GATES = [
+    _SQRT_ISWAP_FSIM_GATE_FAMILY,
+    _PHASED_XZ_GATE_FAMILY,
+    _MEASUREMENT_GATE_FAMILY,
+]
+
+
+# Families of gates which can be applied to any subset of valid qubits.
+_VARIADIC_GATE_FAMILIES = [_MEASUREMENT_GATE_FAMILY, _WAIT_GATE_FAMILY]
+
+
+GateOrFamily = Union[Type[cirq.Gate], cirq.Gate, cirq.GateFamily]
+
+
+@dataclass
+class _GateRepresentations:
+    """Contains equivalent representations of a gate in both DeviceSpecification and GridDevice.
+
+    Attributes:
+        gate_spec_name: The name of gate type in `GateSpecification`.
+        deserialized_forms: Gate representations to be included when the corresponding
+            `GateSpecification` gate type is deserialized into gatesets and gate durations.
+        serializable_forms: GateFamilies used to check whether a given gate can be serialized to the
+            gate type in this _GateRepresentation.
+    """
+
+    gate_spec_name: str
+    deserialized_forms: List[GateOrFamily]
+    serializable_forms: List[cirq.GateFamily]
+
+
+"""Valid gates for a GridDevice."""
+_GATES: List[_GateRepresentations] = [
+    _GateRepresentations(
+        gate_spec_name='syc',
+        deserialized_forms=[_SYC_FSIM_GATE_FAMILY],
+        serializable_forms=[_SYC_FSIM_GATE_FAMILY, cirq.GateFamily(ops.SYC)],
+    ),
+    _GateRepresentations(
+        gate_spec_name='sqrt_iswap',
+        deserialized_forms=[_SQRT_ISWAP_FSIM_GATE_FAMILY],
+        serializable_forms=[_SQRT_ISWAP_FSIM_GATE_FAMILY, cirq.GateFamily(cirq.SQRT_ISWAP)],
+    ),
+    _GateRepresentations(
+        gate_spec_name='sqrt_iswap_inv',
+        deserialized_forms=[_SQRT_ISWAP_INV_FSIM_GATE_FAMILY],
+        serializable_forms=[_SQRT_ISWAP_INV_FSIM_GATE_FAMILY, cirq.GateFamily(cirq.SQRT_ISWAP_INV)],
+    ),
+    _GateRepresentations(
+        gate_spec_name='cz',
+        deserialized_forms=[_CZ_FSIM_GATE_FAMILY],
+        serializable_forms=[_CZ_FSIM_GATE_FAMILY, cirq.GateFamily(cirq.CZ)],
+    ),
+    _GateRepresentations(
+        gate_spec_name='phased_xz',
+        deserialized_forms=[cirq.PhasedXZGate, cirq.XPowGate, cirq.YPowGate, cirq.PhasedXPowGate],
+        serializable_forms=[
+            cirq.GateFamily(cirq.PhasedXZGate),
+            cirq.GateFamily(cirq.XPowGate),
+            cirq.GateFamily(cirq.YPowGate),
+            cirq.GateFamily(cirq.PhasedXPowGate),
+        ],
+    ),
+    _GateRepresentations(
+        gate_spec_name='virtual_zpow',
+        deserialized_forms=[cirq.GateFamily(cirq.ZPowGate, tags_to_ignore=[ops.PhysicalZTag()])],
+        serializable_forms=[cirq.GateFamily(cirq.ZPowGate, tags_to_ignore=[ops.PhysicalZTag()])],
+    ),
+    _GateRepresentations(
+        gate_spec_name='physical_zpow',
+        deserialized_forms=[cirq.GateFamily(cirq.ZPowGate, tags_to_accept=[ops.PhysicalZTag()])],
+        serializable_forms=[cirq.GateFamily(cirq.ZPowGate, tags_to_accept=[ops.PhysicalZTag()])],
+    ),
+    _GateRepresentations(
+        gate_spec_name='coupler_pulse',
+        deserialized_forms=[experimental_ops.CouplerPulse],
+        serializable_forms=[cirq.GateFamily(experimental_ops.CouplerPulse)],
+    ),
+    _GateRepresentations(
+        gate_spec_name='meas',
+        deserialized_forms=[cirq.MeasurementGate],
+        serializable_forms=[cirq.GateFamily(cirq.MeasurementGate)],
+    ),
+    _GateRepresentations(
+        gate_spec_name='wait',
+        deserialized_forms=[cirq.WaitGate],
+        serializable_forms=[cirq.GateFamily(cirq.WaitGate)],
+    ),
+]
 
 
 def _validate_device_specification(proto: v2.device_pb2.DeviceSpecification) -> None:
@@ -57,7 +167,6 @@ def _validate_device_specification(proto: v2.device_pb2.DeviceSpecification) -> 
         qubit_set.add(q_name)
 
     for target_set in proto.valid_targets:
-
         # Check for unknown qubits in targets.
         for target in target_set.targets:
             for target_id in target.ids:
@@ -84,42 +193,63 @@ def _validate_device_specification(proto: v2.device_pb2.DeviceSpecification) -> 
             raise ValueError("Invalid DeviceSpecification: target_ordering cannot be ASYMMETRIC.")
 
 
-def _build_gateset_and_gate_durations(
+def _serialize_gateset_and_gate_durations(
+    out: v2.device_pb2.DeviceSpecification,
+    gateset: cirq.Gateset,
+    gate_durations: Mapping[cirq.GateFamily, cirq.Duration],
+) -> v2.device_pb2.DeviceSpecification:
+    """Serializes the given gateset and gate durations to DeviceSpecification."""
+
+    gate_specs: Dict[str, v2.device_pb2.GateSpecification] = {}
+    for gate_family in gateset.gates:
+        gate_spec = v2.device_pb2.GateSpecification()
+        gate_rep = next(
+            (gr for gr in _GATES for gf in gr.serializable_forms if gf == gate_family), None
+        )
+        if gate_rep is None:
+            raise ValueError(f'Unrecognized gate: {gate_family}.')
+        gate_name = gate_rep.gate_spec_name
+
+        # Set gate
+        getattr(gate_spec, gate_name).SetInParent()
+
+        # Set gate duration
+        gate_durations_picos = {
+            int(gate_durations[gf].total_picos())
+            for gf in gate_rep.serializable_forms
+            if gf in gate_durations
+        }
+        if len(gate_durations_picos) > 1:
+            raise ValueError(
+                'Multiple gate families in the following list exist in the gate duration dict, and '
+                f'they are expected to have the same duration value: {gate_rep.serializable_forms}'
+            )
+        elif len(gate_durations_picos) == 1:
+            gate_spec.gate_duration_picos = gate_durations_picos.pop()
+
+        # GateSpecification dedup. Multiple gates or GateFamilies in the gateset could map to the
+        # same GateSpecification.
+        gate_specs[gate_name] = gate_spec
+
+    # Sort by gate name to keep valid_gates stable.
+    out.valid_gates.extend(v for _, v in sorted(gate_specs.items()))
+
+    return out
+
+
+def _deserialize_gateset_and_gate_durations(
     proto: v2.device_pb2.DeviceSpecification,
-) -> Tuple[cirq.Gateset, Dict[cirq.GateFamily, cirq.Duration]]:
-    """Extracts gate set and gate duration information from the given DeviceSpecification proto."""
+) -> Tuple[cirq.Gateset, Mapping[cirq.GateFamily, cirq.Duration]]:
+    """Deserializes gateset and gate duration from DeviceSpecification."""
 
-    gates_list: List[Union[Type[cirq.Gate], cirq.Gate, cirq.GateFamily]] = []
+    gates_list: List[GateOrFamily] = []
     gate_durations: Dict[cirq.GateFamily, cirq.Duration] = {}
-
-    # TODO(#5050) Describe how to add/remove gates.
 
     for gate_spec in proto.valid_gates:
         gate_name = gate_spec.WhichOneof('gate')
-        cirq_gates: List[Union[Type[cirq.Gate], cirq.Gate, cirq.GateFamily]] = []
 
-        if gate_name == 'syc':
-            cirq_gates = [ops.FSimGateFamily(gates_to_accept=[ops.SYC])]
-        elif gate_name == 'sqrt_iswap':
-            cirq_gates = [ops.FSimGateFamily(gates_to_accept=[cirq.SQRT_ISWAP])]
-        elif gate_name == 'sqrt_iswap_inv':
-            cirq_gates = [ops.FSimGateFamily(gates_to_accept=[cirq.SQRT_ISWAP_INV])]
-        elif gate_name == 'cz':
-            cirq_gates = [ops.FSimGateFamily(gates_to_accept=[cirq.CZ])]
-        elif gate_name == 'phased_xz':
-            cirq_gates = [cirq.PhasedXZGate, cirq.XPowGate, cirq.YPowGate, cirq.PhasedXPowGate]
-        elif gate_name == 'virtual_zpow':
-            cirq_gates = [cirq.GateFamily(cirq.ZPowGate, tags_to_ignore=[ops.PhysicalZTag()])]
-        elif gate_name == 'physical_zpow':
-            cirq_gates = [cirq.GateFamily(cirq.ZPowGate, tags_to_accept=[ops.PhysicalZTag()])]
-        elif gate_name == 'coupler_pulse':
-            cirq_gates = [experimental_ops.CouplerPulse]
-        elif gate_name == 'meas':
-            cirq_gates = [cirq.MeasurementGate]
-        elif gate_name == 'wait':
-            cirq_gates = [cirq.WaitGate]
-        else:
-            # coverage: ignore
+        gate_rep = next((gr for gr in _GATES if gr.gate_spec_name == gate_name), None)
+        if gate_rep is None:  # pragma: no cover
             warnings.warn(
                 f"The DeviceSpecification contains the gate '{gate_name}' which is not recognized"
                 " by Cirq and will be ignored. This may be due to an out-of-date Cirq version.",
@@ -127,11 +257,8 @@ def _build_gateset_and_gate_durations(
             )
             continue
 
-        gates_list.extend(cirq_gates)
-
-        # TODO(#5050) Allow different gate representations of the same gate to be looked up in
-        # gate_durations.
-        for g in cirq_gates:
+        gates_list.extend(gate_rep.deserialized_forms)
+        for g in gate_rep.deserialized_forms:
             if not isinstance(g, cirq.GateFamily):
                 g = cirq.GateFamily(g)
             gate_durations[g] = cirq.Duration(picos=gate_spec.gate_duration_picos)
@@ -145,28 +272,27 @@ def _build_gateset_and_gate_durations(
 def _build_compilation_target_gatesets(
     gateset: cirq.Gateset,
 ) -> Sequence[cirq.CompilationTargetGateset]:
-    """Detects compilation target gatesets based on what gates are inside the gateset.
+    """Detects compilation target gatesets based on what gates are inside the gateset."""
 
-    If a device contains gates which yield multiple compilation target gatesets, the user can only
-    choose one target gateset to compile to. For example, a device may contain both SYC and
-    SQRT_ISWAP gates which yield two separate target gatesets, but a circuit can only be compiled to
-    either SYC or SQRT_ISWAP for its two-qubit gates, not both.
-
-    TODO(#5050) when cirq-google CompilationTargetGateset subclasses are implemented, mention that
-    gates which are part of the gateset but not the compilation target gateset are untouched when
-    compiled.
-    """
-
-    # TODO(#5050) Subclass core CompilationTargetGatesets in cirq-google.
-
+    # Include a particular target gateset if the device's gateset contains all required gates of
+    # the target gateset.
+    # Set all remaining gates in the device's gateset as `additional_gates` so that they are not
+    # decomposed in the transformation process.
     target_gatesets: List[cirq.CompilationTargetGateset] = []
-    if cirq.CZ in gateset:
-        target_gatesets.append(cirq.CZTargetGateset())
-    if ops.SYC in gateset:
-        target_gatesets.append(transformers.SycamoreTargetGateset())
-    if cirq.SQRT_ISWAP in gateset:
+    if all(gate_family in gateset.gates for gate_family in _CZ_TARGET_GATES):
         target_gatesets.append(
-            cirq.SqrtIswapTargetGateset(use_sqrt_iswap_inv=cirq.SQRT_ISWAP_INV in gateset)
+            transformers.GoogleCZTargetGateset(
+                additional_gates=list(gateset.gates - set(_CZ_TARGET_GATES))
+            )
+        )
+    if all(gate_family in gateset.gates for gate_family in _SYC_TARGET_GATES):
+        # TODO(#5050) SycamoreTargetGateset additional gates
+        target_gatesets.append(transformers.SycamoreTargetGateset())
+    if all(gate_family in gateset.gates for gate_family in _SQRT_ISWAP_TARGET_GATES):
+        target_gatesets.append(
+            cirq.SqrtIswapTargetGateset(
+                additional_gates=list(gateset.gates - set(_SQRT_ISWAP_TARGET_GATES))
+            )
         )
 
     return tuple(target_gatesets)
@@ -185,56 +311,94 @@ class GridDevice(cirq.Device):
 
     Example use cases:
 
-        * Get an instance of a Google grid device.
-        >>> device = cirq_google.get_engine().get_processor('processor_name').get_device()
+        Get an instance of a Google grid device.
+        >>> device = cirq_google.engine.create_device_from_processor_id("rainbow")
 
-        * Print the grid layout of the device.
+        Print the grid layout of the device.
         >>> print(device)
+                          (3, 2)
+                          │
+                          │
+                 (4, 1)───(4, 2)───(4, 3)
+                 │        │        │
+                 │        │        │
+        (5, 0)───(5, 1)───(5, 2)───(5, 3)───(5, 4)
+                 │        │        │        │
+                 │        │        │        │
+                 (6, 1)───(6, 2)───(6, 3)───(6, 4)───(6, 5)
+                          │        │        │        │
+                          │        │        │        │
+                          (7, 2)───(7, 3)───(7, 4)───(7, 5)───(7, 6)
+                                   │        │        │
+                                   │        │        │
+                                   (8, 3)───(8, 4)───(8, 5)
+                                            │
+                                            │
+                                            (9, 4)
 
-        * Determine whether a circuit can be run on the device.
+        Determine whether a circuit can be run on the device.
+        >>> circuit = cirq.Circuit(cirq.X(cirq.q(5, 1)))
         >>> device.validate_circuit(circuit)  # Raises a ValueError if the circuit is invalid.
 
-        * Determine whether an operation can be run on the device.
+        Determine whether an operation can be run on the device.
+        >>> operation = cirq.X(cirq.q(5, 1))
         >>> device.validate_operation(operation)  # Raises a ValueError if the operation is invalid.
 
-        * Get the `cirq.Gateset` containing valid gates for the device, and inspect the full list
-          of valid gates.
+        Get the `cirq.Gateset` containing valid gates for the device, and inspect the full list
+        of valid gates.
         >>> gateset = device.metadata.gateset
         >>> print(gateset)
+        Gateset:...
 
-        * Determine whether a gate is available on the device.
+        Determine whether a gate is available on the device.
+        >>> gate = cirq.X
         >>> gate in device.metadata.gateset
+        True
 
         * Get a collection of valid qubits on the device.
         >>> device.metadata.qubit_set
+        frozenset({...cirq.GridQubit(6, 4)...})
 
         * Get a collection of valid qubit pairs for two-qubit gates.
         >>> device.metadata.qubit_pairs
+        frozenset({...})
 
         * Get a collection of isolated qubits, i.e. qubits which are not part of any qubit pair.
         >>> device.metadata.isolated_qubits
+        frozenset()
 
         * Get a collection of approximate gate durations for every gate supported by the device.
         >>> device.metadata.gate_durations
+        {...cirq.Duration...}
 
         * Get a collection of valid CompilationTargetGatesets for the device, which can be used to
           transform a circuit to one which only contains gates from a native target gateset
           supported by the device.
         >>> device.metadata.compilation_target_gatesets
+        (...cirq_google.GoogleCZTargetGateset...)
 
         * Assuming valid CompilationTargetGatesets exist for the device, select the first one and
           use it to transform a circuit to one which only contains gates from a native target
           gateset supported by the device.
-        >>> cirq.optimize_for_target_gateset(
-                circuit,
-                gateset=device.metadata.compilation_target_gatesets[0]
-            )
+        >>> circuit = cirq.optimize_for_target_gateset(
+        ...     circuit,
+        ...     gateset=device.metadata.compilation_target_gatesets[0]
+        ... )
+        >>> print(circuit)
+        (5, 1): ───PhXZ(a=0,x=1,z=0)───
 
-    A note about CompilationTargetGatesets:
+    Notes about CompilationTargetGatesets:
 
-    A circuit which contains `cirq.WaitGate`s will be dropped if it is transformed using
-    CompilationTargetGatesets generated by GridDevice. To better control circuit timing, insert
-    WaitGates after the circuit has been transformed.
+    * If a device contains gates which yield multiple compilation target gatesets, the user can only
+      choose one target gateset to compile to. For example, a device may contain both SYC and
+      SQRT_ISWAP gates which yield two separate target gatesets, but a circuit can only be compiled
+      to either SYC or SQRT_ISWAP for its two-qubit gates, not both.
+    * For a given compilation target gateset, gates which are part of the device's gateset but not
+      the target gateset are not decomposed. However, they may still be merged with other gates in
+      the circuit.
+    * A circuit which contains `cirq.WaitGate`s will be dropped if it is transformed using
+      CompilationTargetGatesets generated by GridDevice. To better control circuit timing, insert
+      WaitGates after the circuit has been transformed.
 
     Notes for cirq_google internal implementation:
 
@@ -243,20 +407,21 @@ class GridDevice(cirq.Device):
         https://github.com/quantumlib/Cirq/blob/master/cirq-google/cirq_google/api/v2/device.proto
     )
     is the main specification for device information surfaced by the Quantum Computing Service.
-    Thus, this class is should be instantiated using a `DeviceSpecification` proto via the
+    Thus, this class should typically be instantiated using a `DeviceSpecification` proto via the
     `from_proto()` class method.
     """
 
     def __init__(self, metadata: cirq.GridDeviceMetadata):
         """Creates a GridDevice object.
 
-        This constructor typically should not be used directly. Use `from_proto()` instead.
+        This constructor should not be used directly outside the class implementation. Use
+        `from_proto()` instead.
         """
         self._metadata = metadata
 
     @classmethod
     def from_proto(cls, proto: v2.device_pb2.DeviceSpecification) -> 'GridDevice':
-        """Create a `GridDevice` from a `DeviceSpecification` proto.
+        """Deserializes the `DeviceSpecification` to a `GridDevice`.
 
         Args:
             proto: The `DeviceSpecification` proto describing a Google device.
@@ -284,7 +449,7 @@ class GridDevice(cirq.Device):
             if len(target.ids) == 2 and ts.target_ordering == v2.device_pb2.TargetSet.SYMMETRIC
         ]
 
-        gateset, gate_durations = _build_gateset_and_gate_durations(proto)
+        gateset, gate_durations = _deserialize_gateset_and_gate_durations(proto)
 
         try:
             metadata = cirq.GridDeviceMetadata(
@@ -294,25 +459,123 @@ class GridDevice(cirq.Device):
                 all_qubits=all_qubits,
                 compilation_target_gatesets=_build_compilation_target_gatesets(gateset),
             )
-        except ValueError as ve:  # coverage: ignore
+        except ValueError as ve:  # pragma: no cover
             # Spec errors should have been caught in validation above.
-            raise ValueError("DeviceSpecification is invalid.") from ve  # coverage: ignore
+            raise ValueError("DeviceSpecification is invalid.") from ve  # pragma: no cover
 
         return GridDevice(metadata)
+
+    def to_proto(
+        self, out: Optional[v2.device_pb2.DeviceSpecification] = None
+    ) -> v2.device_pb2.DeviceSpecification:
+        """Serializes the GridDevice to a DeviceSpecification.
+
+        Args:
+            out: Optional DeviceSpecification to be populated. Fields are populated in-place.
+
+        Returns:
+            The populated DeviceSpecification if out is specified, or the newly created
+            DeviceSpecification.
+        """
+        qubits = self._metadata.qubit_set
+        unordered_pairs = [tuple(pair_set) for pair_set in self._metadata.qubit_pairs]
+        pairs = sorted((q0, q1) if q0 <= q1 else (q1, q0) for q0, q1 in unordered_pairs)
+        gateset = self._metadata.gateset
+        gate_durations = self._metadata.gate_durations
+
+        if out is None:
+            out = v2.device_pb2.DeviceSpecification()
+
+        # If fields are already filled (i.e. as part of the old DeviceSpecification format), leave
+        # them as is. Fields populated in the new format do not conflict with how they were
+        # populated in the old format.
+        # TODO(#5050) remove empty checks below once deprecated fields in DeviceSpecification are
+        # removed.
+
+        if not out.valid_qubits:
+            known_devices.populate_qubits_in_device_proto(qubits, out)
+        if not out.valid_targets:
+            known_devices.populate_qubit_pairs_in_device_proto(pairs, out)
+        _serialize_gateset_and_gate_durations(
+            out, gateset, {} if gate_durations is None else gate_durations
+        )
+        _validate_device_specification(out)
+
+        return out
+
+    @classmethod
+    def _from_device_information(
+        cls,
+        *,
+        qubit_pairs: Collection[Tuple[cirq.GridQubit, cirq.GridQubit]],
+        gateset: cirq.Gateset,
+        gate_durations: Optional[Mapping[cirq.GateFamily, cirq.Duration]] = None,
+        all_qubits: Optional[Collection[cirq.GridQubit]] = None,
+    ) -> 'GridDevice':
+        """Constructs a GridDevice using the device information provided.
+
+        EXPERIMENTAL: this method may have changes which are not backward compatible in the future.
+
+        This is a convenience method for constructing a GridDevice given partial gateset and
+        gate_duration information: for every distinct gate, only one representation needs to be in
+        gateset and gate_duration. The remaining representations will be automatically generated.
+
+        For example, if the input gateset contains only `cirq.PhasedXZGate`, and the input
+        gate_durations is `{cirq.GateFamily(cirq.PhasedXZGate): cirq.Duration(picos=3)}`,
+        `GridDevice.metadata.gateset` will be
+
+        ```
+        cirq.Gateset(cirq.PhasedXZGate, cirq.XPowGate, cirq.YPowGate, cirq.PhasedXPowGate)
+        ```
+
+        and `GridDevice.metadata.gate_durations` will be
+
+        ```
+        {
+            cirq.GateFamily(cirq.PhasedXZGate): cirq.Duration(picos=3),
+            cirq.GateFamily(cirq.XPowGate): cirq.Duration(picos=3),
+            cirq.GateFamily(cirq.YPowGate): cirq.Duration(picos=3),
+            cirq.GateFamily(cirq.PhasedXPowGate): cirq.Duration(picos=3),
+        }
+        ```
+
+        This method reduces the complexity of constructing `GridDevice` on server side by requiring
+        only the bare essential device information.
+
+        Args:
+            qubit_pairs: Collection of bidirectional qubit couplings available on the device.
+            gateset: The gate set supported by the device.
+            gate_durations: Optional mapping from gates supported by the device to their timing
+                estimates. Not every gate is required to have an associated duration.
+            out: If set, device information will be serialized into this DeviceSpecification.
+
+        Raises:
+            ValueError: If a pair contains two identical qubits.
+            ValueError: If `gateset` contains invalid GridDevice gates.
+            ValueError: If `gate_durations` contains keys which are not in `gateset`.
+            ValueError: If multiple gate families in gate_durations can
+                represent a particular gate, but they have different durations.
+            ValueError: If all_qubits is provided and is not a superset
+                of all the qubits found in qubit_pairs.
+        """
+        metadata = cirq.GridDeviceMetadata(
+            qubit_pairs=qubit_pairs,
+            gateset=gateset,
+            gate_durations=gate_durations,
+            all_qubits=all_qubits,
+        )
+        incomplete_device = GridDevice(metadata)
+        # incomplete_device may have incomplete gateset and gate durations information, as described
+        # in the docstring.
+        # To generate the full gateset and gate durations, we rely on the device deserialization
+        # logic by first serializing then deserializing the fake device, to ensure that the
+        # resulting device is consistent with one that is deserialized from DeviceSpecification.
+        return GridDevice.from_proto(incomplete_device.to_proto())
 
     @property
     def metadata(self) -> cirq.GridDeviceMetadata:
         """Get metadata information for the device."""
         return self._metadata
-
-    # Some user code using SerializableDevices gets the qubit list via `device.qubits`.
-    # This is a stopgap solution to prevent user breakage with the change to GridDevice.
-    @property  # type: ignore
-    @cirq._compat.deprecated(
-        deadline='v0.16', fix='Change `device.qubits` to `device.metadata.qubit_set`.'
-    )
-    def qubits(self) -> List[cirq.Qid]:
-        return sorted(self._metadata.qubit_set)
 
     def validate_operation(self, operation: cirq.Operation) -> None:
         """Raises an exception if an operation is not valid.
@@ -338,6 +601,7 @@ class GridDevice(cirq.Device):
 
         if (
             len(operation.qubits) == 2
+            and not any(operation in gf for gf in _VARIADIC_GATE_FAMILIES)
             and frozenset(operation.qubits) not in self._metadata.qubit_pairs
         ):
             raise ValueError(f'Qubit pair is not valid on device: {operation.qubits!r}.')
@@ -391,94 +655,3 @@ class GridDevice(cirq.Device):
 
     def _value_equality_values_(self):
         return self._metadata
-
-
-def _set_gate_in_gate_spec(
-    gate_spec: v2.device_pb2.GateSpecification, gate_family: cirq.GateFamily
-) -> None:
-    if gate_family == SYC_GATE_FAMILY:
-        gate_spec.syc.SetInParent()
-    elif gate_family == SQRT_ISWAP_GATE_FAMILY:
-        gate_spec.sqrt_iswap.SetInParent()
-    elif gate_family == SQRT_ISWAP_INV_GATE_FAMILY:
-        gate_spec.sqrt_iswap_inv.SetInParent()
-    elif gate_family == CZ_GATE_FAMILY:
-        gate_spec.cz.SetInParent()
-    elif gate_family == PHASED_XZ_GATE_FAMILY:
-        gate_spec.phased_xz.SetInParent()
-    elif gate_family == VIRTUAL_ZPOW_GATE_FAMILY:
-        gate_spec.virtual_zpow.SetInParent()
-    elif gate_family == PHYSICAL_ZPOW_GATE_FAMILY:
-        gate_spec.physical_zpow.SetInParent()
-    elif gate_family == COUPLER_PULSE_GATE_FAMILY:
-        gate_spec.coupler_pulse.SetInParent()
-    elif gate_family == MEASUREMENT_GATE_FAMILY:
-        gate_spec.meas.SetInParent()
-    elif gate_family == WAIT_GATE_FAMILY:
-        gate_spec.wait.SetInParent()
-    else:
-        raise ValueError(f'Unrecognized gate {gate_family}.')
-
-
-def create_device_specification_proto(
-    *,
-    qubits: Collection[cirq.GridQubit],
-    pairs: Collection[Tuple[cirq.GridQubit, cirq.GridQubit]],
-    gateset: cirq.Gateset,
-    gate_durations: Optional[Dict['cirq.GateFamily', 'cirq.Duration']] = None,
-    out: Optional[v2.device_pb2.DeviceSpecification] = None,
-) -> v2.device_pb2.DeviceSpecification:
-    """Serializes the given device information into a DeviceSpecification proto.
-
-    Args:
-        qubits: Collection of qubits available on the device.
-        pairs: Collection of bidirectional qubit couplings available on the device.
-        gateset: The gate set supported by the device.
-        gate_durations: Optional mapping from gates supported by the device to their timing
-            estimates. Not every gate is required to have an associated duration.
-        out: If set, device information will be serialized into this DeviceSpecification.
-
-    Raises:
-        ValueError: If a qubit in `pairs` is not part of `qubits`.
-        ValueError: If a pair contains two identical qubits.
-        ValueError: If `gate_durations` contains keys which are not in `gateset`.
-        ValueError: If `gateset` contains a gate which is not recognized by DeviceSpecification.
-    """
-
-    if gate_durations is not None:
-        extra_gate_families = (gate_durations.keys() | gateset.gates) - gateset.gates
-        if extra_gate_families:
-            raise ValueError(
-                'Gate durations contain keys which are not part of the gateset:'
-                f' {extra_gate_families}'
-            )
-
-    if out is None:
-        out = v2.device_pb2.DeviceSpecification()
-
-    # If fields are already filled (i.e. as part of the old DeviceSpecification format), leave them
-    # as is. Fields populated in the new format do not conflict with how they were populated in the
-    # old format.
-    # TODO(#5050) remove empty checks below once deprecated fields in DeviceSpecification are
-    # removed.
-
-    if len(out.valid_qubits) == 0:
-        known_devices.populate_qubits_in_device_proto(qubits, out)
-
-    if len(out.valid_targets) == 0:
-        known_devices.populate_qubit_pairs_in_device_proto(pairs, out)
-
-    gate_specs = []
-    for gate_family in gateset.gates:
-        gate_spec = v2.device_pb2.GateSpecification()
-        _set_gate_in_gate_spec(gate_spec, gate_family)
-        if gate_durations is not None and gate_family in gate_durations:
-            gate_spec.gate_duration_picos = int(gate_durations[gate_family].total_picos())
-        gate_specs.append(gate_spec)
-
-    # Sort by gate name to keep valid_gates stable.
-    out.valid_gates.extend(sorted(gate_specs, key=lambda s: s.WhichOneof('gate')))
-
-    _validate_device_specification(out)
-
-    return out

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional
+from typing import Any, cast, Optional, Type
 
 import numpy as np
 
@@ -46,12 +46,15 @@ def state_vector_has_stabilizer(state_vector: np.ndarray, stabilizer: DensePauli
     """
 
     qubits = LineQubit.range(protocols.num_qubits(stabilizer))
+    complex_dtype: Type[np.complexfloating] = np.complex64
+    if np.issubdtype(state_vector.dtype, np.complexfloating):
+        complex_dtype = cast(Type[np.complexfloating], state_vector.dtype)
     args = state_vector_simulation_state.StateVectorSimulationState(
         available_buffer=np.empty_like(state_vector),
         qubits=qubits,
         prng=np.random.RandomState(),
         initial_state=state_vector.copy(),
-        dtype=state_vector.dtype,
+        dtype=complex_dtype,
     )
     protocols.act_on(stabilizer, args, qubits)
     return np.allclose(args.target_tensor, state_vector)
@@ -65,7 +68,7 @@ def assert_all_implemented_act_on_effects_match_unitary(
     Checks that act_on with CliffordTableau or StabilizerStateCHForm behaves
     consistently with act_on through final state vector. Does not work with
     Operations or Gates expecting non-qubit Qids. If either of the
-    assert_*_implmented args is true, fails if the corresponding method is not
+    assert_*_implemented args is true, fails if the corresponding method is not
     implemented for the test circuit.
 
     Args:
@@ -73,7 +76,7 @@ def assert_all_implemented_act_on_effects_match_unitary(
         assert_tableau_implemented: asserts that protocols.act_on() works with
           val and CliffordTableauSimulationState inputs.
         assert_ch_form_implemented: asserts that protocols.act_on() works with
-          val and ActOnStabilizerStateChFormArgs inputs.
+          val and StabilizerChFormSimulationState inputs.
     """
 
     # pylint: disable=unused-variable
@@ -92,7 +95,7 @@ def assert_all_implemented_act_on_effects_match_unitary(
                 "Could not assert if any act_on methods were "
                 "implemented. Operating on qudits or with a "
                 "non-unitary or parameterized operation is "
-                "unsupported.\n\nval: {!r}".format(val)
+                f"unsupported.\n\nval: {val!r}"
             )
         return None
 
@@ -121,7 +124,7 @@ def assert_all_implemented_act_on_effects_match_unitary(
             state_vector_has_stabilizer(state_vector, stab) for stab in tableau.stabilizers()
         ), (
             "act_on clifford tableau is not consistent with "
-            "final_state_vector simulation.\n\nval: {!r}".format(val)
+            f"final_state_vector simulation.\n\nval: {val!r}"
         )
 
     stabilizer_ch_form = _final_stabilizer_state_ch_form(circuit, qubit_map)
@@ -130,7 +133,7 @@ def assert_all_implemented_act_on_effects_match_unitary(
             "Failed to generate final "
             "stabilizer state CH form "
             "for the test circuit."
-            "\n\nval: {!r}".format(val)
+            f"\n\nval: {val!r}"
         )
     else:
         np.testing.assert_allclose(

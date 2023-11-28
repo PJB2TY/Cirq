@@ -42,6 +42,7 @@ from cirq.ops import (
     raw_types,
     swap_gates,
     raw_types,
+    control_values as cv,
     global_phase_op,
 )
 
@@ -170,25 +171,14 @@ class CCZPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
         ]
         return ''.join(lines)
 
-    def _quil_(
-        self, qubits: Tuple['cirq.Qid', ...], formatter: 'cirq.QuilFormatter'
-    ) -> Optional[str]:
-        if self._exponent != 1:
-            return None
-        lines = [
-            formatter.format('H {0}\n', qubits[2]),
-            formatter.format('CCNOT {0} {1} {2}\n', qubits[0], qubits[1], qubits[2]),
-            formatter.format('H {0}\n', qubits[2]),
-        ]
-        return ''.join(lines)
-
     def __repr__(self) -> str:
         if self._global_shift == 0:
             if self._exponent == 1:
                 return 'cirq.CCZ'
             return f'(cirq.CCZ**{proper_repr(self._exponent)})'
-        return 'cirq.CCZPowGate(exponent={}, global_shift={!r})'.format(
-            proper_repr(self._exponent), self._global_shift
+        return (
+            f'cirq.CCZPowGate(exponent={proper_repr(self._exponent)}, '
+            f'global_shift={self._global_shift!r})'
         )
 
     def __str__(self) -> str:
@@ -201,8 +191,10 @@ class CCZPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
 
     def controlled(
         self,
-        num_controls: int = None,
-        control_values: Optional[Sequence[Union[int, Collection[int]]]] = None,
+        num_controls: Optional[int] = None,
+        control_values: Optional[
+            Union[cv.AbstractControlValues, Sequence[Union[int, Collection[int]]]]
+        ] = None,
         control_qid_shape: Optional[Tuple[int, ...]] = None,
     ) -> raw_types.Gate:
         """Returns a controlled `ZPowGate` with two additional controls.
@@ -214,11 +206,13 @@ class CCZPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
         """
         if num_controls == 0:
             return self
+        sub_gate: 'cirq.Gate' = self
+        if self._global_shift == 0:
+            sub_gate = controlled_gate.ControlledGate(
+                common_gates.ZPowGate(exponent=self._exponent), num_controls=2
+            )
         return controlled_gate.ControlledGate(
-            controlled_gate.ControlledGate(
-                common_gates.ZPowGate(exponent=self._exponent, global_shift=self._global_shift),
-                num_controls=2,
-            ),
+            sub_gate,
             num_controls=num_controls,
             control_values=control_values,
             control_qid_shape=control_qid_shape,
@@ -392,9 +386,8 @@ class ThreeQubitDiagonalGate(raw_types.Gate):
         return protocols.obj_to_dict_helper(self, attribute_names=["diag_angles_radians"])
 
     def __repr__(self) -> str:
-        return 'cirq.ThreeQubitDiagonalGate([{}])'.format(
-            ','.join(proper_repr(angle) for angle in self._diag_angles_radians)
-        )
+        angles = ','.join(proper_repr(angle) for angle in self._diag_angles_radians)
+        return f'cirq.ThreeQubitDiagonalGate([{angles}])'
 
     def _num_qubits_(self) -> int:
         return 3
@@ -408,7 +401,6 @@ class CCXPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
 
     $$
     \begin{bmatrix}
-
         1 & & & & & & & \\
         & 1 & & & & & & \\
         & & 1 & & & & & \\
@@ -493,20 +485,14 @@ class CCXPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
         args.validate_version('2.0')
         return args.format('ccx {0},{1},{2};\n', qubits[0], qubits[1], qubits[2])
 
-    def _quil_(
-        self, qubits: Tuple['cirq.Qid', ...], formatter: 'cirq.QuilFormatter'
-    ) -> Optional[str]:
-        if self._exponent != 1:
-            return None
-        return formatter.format('CCNOT {0} {1} {2}\n', qubits[0], qubits[1], qubits[2])
-
     def __repr__(self) -> str:
         if self._global_shift == 0:
             if self._exponent == 1:
                 return 'cirq.TOFFOLI'
             return f'(cirq.TOFFOLI**{proper_repr(self._exponent)})'
-        return 'cirq.CCXPowGate(exponent={}, global_shift={!r})'.format(
-            proper_repr(self._exponent), self._global_shift
+        return (
+            f'cirq.CCXPowGate(exponent={proper_repr(self._exponent)}, '
+            f'global_shift={self._global_shift!r})'
         )
 
     def __str__(self) -> str:
@@ -519,8 +505,10 @@ class CCXPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
 
     def controlled(
         self,
-        num_controls: int = None,
-        control_values: Optional[Sequence[Union[int, Collection[int]]]] = None,
+        num_controls: Optional[int] = None,
+        control_values: Optional[
+            Union[cv.AbstractControlValues, Sequence[Union[int, Collection[int]]]]
+        ] = None,
         control_qid_shape: Optional[Tuple[int, ...]] = None,
     ) -> raw_types.Gate:
         """Returns a controlled `XPowGate` with two additional controls.
@@ -532,11 +520,13 @@ class CCXPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
         """
         if num_controls == 0:
             return self
+        sub_gate: 'cirq.Gate' = self
+        if self._global_shift == 0:
+            sub_gate = controlled_gate.ControlledGate(
+                common_gates.XPowGate(exponent=self._exponent), num_controls=2
+            )
         return controlled_gate.ControlledGate(
-            controlled_gate.ControlledGate(
-                common_gates.XPowGate(exponent=self._exponent, global_shift=self._global_shift),
-                num_controls=2,
-            ),
+            sub_gate,
             num_controls=num_controls,
             control_values=control_values,
             control_qid_shape=control_qid_shape,
@@ -673,13 +663,13 @@ class CSwapGate(gate_features.InterchangeableQubitsGate, raw_types.Gate):
         args.validate_version('2.0')
         return args.format('cswap {0},{1},{2};\n', qubits[0], qubits[1], qubits[2])
 
-    def _quil_(
-        self, qubits: Tuple['cirq.Qid', ...], formatter: 'cirq.QuilFormatter'
-    ) -> Optional[str]:
-        return formatter.format('CSWAP {0} {1} {2}\n', qubits[0], qubits[1], qubits[2])
-
     def _value_equality_values_(self):
         return ()
+
+    def __pow__(self, power):
+        if power == 1 or power == -1:
+            return self
+        return NotImplemented
 
     def __str__(self) -> str:
         return 'FREDKIN'
@@ -692,8 +682,10 @@ class CSwapGate(gate_features.InterchangeableQubitsGate, raw_types.Gate):
 
     def controlled(
         self,
-        num_controls: int = None,
-        control_values: Optional[Sequence[Union[int, Collection[int]]]] = None,
+        num_controls: Optional[int] = None,
+        control_values: Optional[
+            Union[cv.AbstractControlValues, Sequence[Union[int, Collection[int]]]]
+        ] = None,
         control_qid_shape: Optional[Tuple[int, ...]] = None,
     ) -> raw_types.Gate:
         """Returns a controlled `SWAP` with one additional control.

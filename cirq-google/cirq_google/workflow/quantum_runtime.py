@@ -59,10 +59,7 @@ class SharedRuntimeInfo:
         return 'cirq.google'
 
     def _json_dict_(self) -> Dict[str, Any]:
-        d = dataclass_json_dict(self)
-        # TODO (gh-4699): serialize `device` as well once SerializableDevice is serializable.
-        del d['device']
-        return d
+        return dataclass_json_dict(self)
 
     def __repr__(self) -> str:
         return _compat.dataclass_repr(self, namespace='cirq_google')
@@ -72,7 +69,7 @@ def _try_tuple(k: Any) -> Any:
     """If we serialize a dictionary that had tuple keys, they get turned to json lists."""
     if isinstance(k, list):
         return tuple(k)
-    return k  # coverage: ignore
+    return k  # pragma: no cover
 
 
 @dataclasses.dataclass
@@ -262,8 +259,7 @@ def execute(
         run_id = rt_config.run_id
 
     # base_data_dir handling.
-    if not base_data_dir:
-        # coverage: ignore
+    if not base_data_dir:  # pragma: no cover
         raise ValueError("Please provide a non-empty `base_data_dir`.")
 
     sampler = rt_config.processor_record.get_sampler()

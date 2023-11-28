@@ -372,7 +372,7 @@ class PhasedFSimEngineSimulator(cirq.SimulatesIntermediateStateVector[cirq.Spars
 
     def final_state_vector(self, program: cirq.Circuit) -> np.ndarray:
         result = self.simulate(program)
-        return result.state_vector(copy=False)
+        return result.state_vector()
 
     def get_calibrations(
         self, requests: Sequence[PhasedFSimCalibrationRequest]
@@ -482,7 +482,6 @@ def _convert_to_circuit_with_drift(
     simulator: PhasedFSimEngineSimulator, circuit: cirq.AbstractCircuit
 ) -> cirq.Circuit:
     def map_func(op: cirq.Operation, _) -> cirq.Operation:
-
         if op.gate is None:
             raise IncompatibleMomentError(f'Operation {op} has a missing gate')
 
@@ -495,7 +494,7 @@ def _convert_to_circuit_with_drift(
         translated = simulator.gates_translator(op.gate)
         if translated is None:
             raise IncompatibleMomentError(
-                f'Moment contains non-single qubit operation ' f'{op} with unsupported gate'
+                f'Moment contains non-single qubit operation {op} with unsupported gate'
             )
 
         a, b = op.qubits

@@ -13,12 +13,13 @@
 # limitations under the License.
 
 import abc
-from typing import Any, Dict, List, Sequence, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING
 import numpy as np
 
 from cirq import protocols
+from cirq._compat import proper_repr
 from cirq.qis import quantum_state_representation
-from cirq.value import big_endian_int_to_digits, linear_dict
+from cirq.value import big_endian_int_to_digits, linear_dict, random_state
 
 if TYPE_CHECKING:
     import cirq
@@ -137,7 +138,14 @@ class CliffordTableau(StabilizerState):
     an eigenoperator of the state vector with eigenvalue one: P|psi> = |psi>.
     """
 
-    def __init__(self, num_qubits, initial_state: int = 0):
+    def __init__(
+        self,
+        num_qubits,
+        initial_state: int = 0,
+        rs: Optional[np.ndarray] = None,
+        xs: Optional[np.ndarray] = None,
+        zs: Optional[np.ndarray] = None,
+    ):
         """Initializes CliffordTableau
         Args:
             num_qubits: The number of qubits in the system.
@@ -145,22 +153,76 @@ class CliffordTableau(StabilizerState):
                 state as a big endian int.
         """
         self.n = num_qubits
-
-        # The last row (`2n+1`-th row) is the scratch row used in _measurement
+        self.initial_state = initial_state
+        # _reconstruct_* adds the last row (`2n+1`-th row) to the input arrays,
+        # which is the scratch row used in _measurement
         # computation process only. It should not be exposed to external usage.
-        self._rs = np.zeros(2 * self.n + 1, dtype=bool)
+        self._rs = self._reconstruct_rs(rs)
+        self._xs = self._reconstruct_xs(xs)
+        self._zs = self._reconstruct_zs(zs)
 
-        for (i, val) in enumerate(
-            big_endian_int_to_digits(initial_state, digit_count=num_qubits, base=2)
-        ):
-            self._rs[self.n + i] = bool(val)
+    def _reconstruct_rs(self, rs: Optional[np.ndarray]) -> np.ndarray:
+        if rs is None:
+            new_rs = np.zeros(2 * self.n + 1, dtype=bool)
+            for i, val in enumerate(
+                big_endian_int_to_digits(self.initial_state, digit_count=self.n, base=2)
+            ):
+                new_rs[self.n + i] = bool(val)
+        else:
+            shape = rs.shape
+            if len(shape) == 1 and shape[0] == 2 * self.n and rs.dtype == np.dtype(bool):
+                new_rs = np.append(rs, np.zeros(1, dtype=bool))
+            else:
+                raise ValueError(
+                    "The value you passed for rs is not the correct shape and/or type. "
+                    "Please confirm that it's a single row with 2*num_qubits columns "
+                    "and of type bool."
+                )
+        return new_rs
 
-        self._xs = np.zeros((2 * self.n + 1, self.n), dtype=bool)
-        self._zs = np.zeros((2 * self.n + 1, self.n), dtype=bool)
+    def _reconstruct_xs(self, xs: Optional[np.ndarray]) -> np.ndarray:
+        if xs is None:
+            new_xs = np.zeros((2 * self.n + 1, self.n), dtype=bool)
+            for i in range(self.n):
+                new_xs[i, i] = True
+        else:
+            shape = xs.shape
+            if (
+                len(shape) == 2
+                and shape[0] == 2 * self.n
+                and shape[1] == self.n
+                and xs.dtype == np.dtype(bool)
+            ):
+                new_xs = np.append(xs, np.zeros((1, self.n), dtype=bool), axis=0)
+            else:
+                raise ValueError(
+                    "The value you passed for xs is not the correct shape and/or type. "
+                    "Please confirm that it's 2*num_qubits rows, num_qubits columns, "
+                    "and of type bool."
+                )
+        return new_xs
 
-        for i in range(self.n):
-            self._xs[i, i] = True
-            self._zs[self.n + i, i] = True
+    def _reconstruct_zs(self, zs: Optional[np.ndarray]) -> np.ndarray:
+        if zs is None:
+            new_zs = np.zeros((2 * self.n + 1, self.n), dtype=bool)
+            for i in range(self.n):
+                new_zs[self.n + i, i] = True
+        else:
+            shape = zs.shape
+            if (
+                len(shape) == 2
+                and shape[0] == 2 * self.n
+                and shape[1] == self.n
+                and zs.dtype == np.dtype(bool)
+            ):
+                new_zs = np.append(zs, np.zeros((1, self.n), dtype=bool), axis=0)
+            else:
+                raise ValueError(
+                    "The value you passed for zs is not the correct shape and/or type. "
+                    "Please confirm that it's 2*num_qubits rows, num_qubits columns, "
+                    "and of type bool."
+                )
+        return new_zs
 
     @property
     def xs(self) -> np.ndarray:
@@ -213,8 +275,7 @@ class CliffordTableau(StabilizerState):
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):
-            # coverage: ignore
-            return NotImplemented
+            return NotImplemented  # pragma: no cover
         return (
             self.n == other.n
             and np.array_equal(self.rs, other.rs)
@@ -233,8 +294,13 @@ class CliffordTableau(StabilizerState):
         return state
 
     def __repr__(self) -> str:
-        stabilizers = ", ".join([repr(stab) for stab in self.stabilizers()])
-        return f'stabilizers: [{stabilizers}]'
+        return (
+            f"cirq.CliffordTableau({self.n},"
+            f"rs={proper_repr(np.delete(self._rs, len(self._rs)-1))}, "
+            f"xs={proper_repr(np.delete(self._xs, len(self._xs)-1, axis=0))},"
+            f"zs={proper_repr(np.delete(self._zs, len(self._zs)-1, axis=0))}, "
+            f"initial_state={self.initial_state})"
+        )
 
     def __str__(self) -> str:
         string = ''
@@ -270,11 +336,11 @@ class CliffordTableau(StabilizerState):
 
                 for k in range(self.n):
                     if self.xs[i, k] & (not self.zs[i, k]):
-                        string += 'X%d' % k
+                        string += f'X{k}'
                     elif (not self.xs[i, k]) & self.zs[i, k]:
-                        string += 'Z%d' % k
+                        string += f'Z{k}'
                     elif self.xs[i, k] & self.zs[i, k]:
-                        string += 'Y%d' % k
+                        string += f'Y{k}'
                     else:
                         string += '  '
 
@@ -484,7 +550,7 @@ class CliffordTableau(StabilizerState):
         if exponent % 2 == 0:
             return
         if exponent % 0.5 != 0.0:
-            raise ValueError('X exponent must be half integer')  # coverage: ignore
+            raise ValueError('X exponent must be half integer')  # pragma: no cover
         effective_exponent = exponent % 2
         if effective_exponent == 0.5:
             self.xs[:, axis] ^= self.zs[:, axis]
@@ -499,7 +565,7 @@ class CliffordTableau(StabilizerState):
         if exponent % 2 == 0:
             return
         if exponent % 0.5 != 0.0:
-            raise ValueError('Y exponent must be half integer')  # coverage: ignore
+            raise ValueError('Y exponent must be half integer')  # pragma: no cover
         effective_exponent = exponent % 2
         if effective_exponent == 0.5:
             self.rs[:] ^= self.xs[:, axis] & (~self.zs[:, axis])
@@ -520,7 +586,7 @@ class CliffordTableau(StabilizerState):
         if exponent % 2 == 0:
             return
         if exponent % 0.5 != 0.0:
-            raise ValueError('Z exponent must be half integer')  # coverage: ignore
+            raise ValueError('Z exponent must be half integer')  # pragma: no cover
         effective_exponent = exponent % 2
         if effective_exponent == 0.5:
             self.rs[:] ^= self.xs[:, axis] & self.zs[:, axis]
@@ -535,7 +601,7 @@ class CliffordTableau(StabilizerState):
         if exponent % 2 == 0:
             return
         if exponent % 1 != 0:
-            raise ValueError('H exponent must be integer')  # coverage: ignore
+            raise ValueError('H exponent must be integer')  # pragma: no cover
         self.apply_y(axis, 0.5)
         self.apply_x(axis)
 
@@ -545,7 +611,7 @@ class CliffordTableau(StabilizerState):
         if exponent % 2 == 0:
             return
         if exponent % 1 != 0:
-            raise ValueError('CZ exponent must be integer')  # coverage: ignore
+            raise ValueError('CZ exponent must be integer')  # pragma: no cover
         (self.xs[:, target_axis], self.zs[:, target_axis]) = (
             self.zs[:, target_axis].copy(),
             self.xs[:, target_axis].copy(),
@@ -570,7 +636,7 @@ class CliffordTableau(StabilizerState):
         if exponent % 2 == 0:
             return
         if exponent % 1 != 0:
-            raise ValueError('CX exponent must be integer')  # coverage: ignore
+            raise ValueError('CX exponent must be integer')  # pragma: no cover
         self.rs[:] ^= (
             self.xs[:, control_axis]
             & self.zs[:, target_axis]
@@ -585,4 +651,4 @@ class CliffordTableau(StabilizerState):
     def measure(
         self, axes: Sequence[int], seed: 'cirq.RANDOM_STATE_OR_SEED_LIKE' = None
     ) -> List[int]:
-        return [self._measure(axis, seed) for axis in axes]
+        return [self._measure(axis, random_state.parse_random_state(seed)) for axis in axes]

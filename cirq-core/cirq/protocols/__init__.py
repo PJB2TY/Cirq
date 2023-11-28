@@ -50,6 +50,7 @@ from cirq.protocols.decompose_protocol import (
     decompose,
     decompose_once,
     decompose_once_with_qubits,
+    DecompositionContext,
     SupportsDecompose,
     SupportsDecomposeWithQubits,
 )
@@ -103,7 +104,6 @@ from cirq.protocols.qasm import (
     SupportsQasmWithArgs,
     SupportsQasmWithArgsAndQubits,
 )
-from cirq.protocols.quil import quil, QuilFormatter
 from cirq.protocols.trace_distance_bound import (
     SupportsTraceDistanceBound,
     trace_distance_bound,

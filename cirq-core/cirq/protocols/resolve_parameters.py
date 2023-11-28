@@ -14,6 +14,7 @@
 
 import numbers
 from typing import AbstractSet, Any, cast, TYPE_CHECKING, TypeVar
+from typing_extensions import Self
 
 import sympy
 from typing_extensions import Protocol
@@ -33,13 +34,13 @@ class SupportsParameterization(Protocol):
     via a ParamResolver"""
 
     @doc_private
-    def _is_parameterized_(self: Any) -> bool:
+    def _is_parameterized_(self) -> bool:
         """Whether the object is parameterized by any Symbols that require
         resolution. Returns True if the object has any unresolved Symbols
         and False otherwise."""
 
     @doc_private
-    def _parameter_names_(self: Any) -> AbstractSet[str]:
+    def _parameter_names_(self) -> AbstractSet[str]:
         """Returns a collection of string names of parameters that require
         resolution. If _is_parameterized_ is False, the collection is empty.
         The converse is not necessarily true, because some objects may report
@@ -48,7 +49,7 @@ class SupportsParameterization(Protocol):
         """
 
     @doc_private
-    def _resolve_parameters_(self: T, resolver: 'cirq.ParamResolver', recursive: bool) -> T:
+    def _resolve_parameters_(self, resolver: 'cirq.ParamResolver', recursive: bool) -> Self:
         """Resolve the parameters in the effect."""
 
 
@@ -150,7 +151,7 @@ def resolve_parameters(
     Returns:
         a gate or operation of the same type, but with all Symbols
         replaced with floats or terminal symbols according to the
-        given ParamResolver. If `val` has no `_resolve_parameters_`
+        given `cirq.ParamResolver`. If `val` has no `_resolve_parameters_`
         method or if it returns NotImplemented, `val` itself is returned.
         Note that in some cases, such as when directly resolving a sympy
         Symbol, the return type could differ from the input type; however,
@@ -176,6 +177,10 @@ def resolve_parameters(
         return cast(T, param_resolver.value_of(val, recursive))
     if isinstance(val, (list, tuple)):
         return cast(T, type(val)(resolve_parameters(e, param_resolver, recursive) for e in val))
+
+    is_parameterized = getattr(val, '_is_parameterized_', None)
+    if is_parameterized is not None and not is_parameterized():
+        return val
 
     getter = getattr(val, '_resolve_parameters_', None)
     if getter is None:

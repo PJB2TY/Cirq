@@ -248,18 +248,18 @@ def test_unsupported_operation():
 
 
 def _all_operations(q0, q1, q2, q3, q4, include_measurements=True):
-    class DummyOperation(cirq.Operation):
+    class ExampleOperation(cirq.Operation):
         qubits = (q0,)
         with_qubits = NotImplemented
 
         def _qasm_(self, args: cirq.QasmArgs) -> str:
-            return '// Dummy operation\n'
+            return '// Example operation\n'
 
         def _decompose_(self):
             # Only used by test_output_unitary_same_as_qiskit
-            return ()  # coverage: ignore
+            return ()  # pragma: no cover
 
-    class DummyCompositeOperation(cirq.Operation):
+    class ExampleCompositeOperation(cirq.Operation):
         qubits = (q0,)
         with_qubits = NotImplemented
 
@@ -267,7 +267,7 @@ def _all_operations(q0, q1, q2, q3, q4, include_measurements=True):
             return cirq.X(self.qubits[0])
 
         def __repr__(self):
-            return 'DummyCompositeOperation()'
+            return 'ExampleCompositeOperation()'
 
     return (
         cirq.I(q0),
@@ -297,6 +297,7 @@ def _all_operations(q0, q1, q2, q3, q4, include_measurements=True):
         cirq.Rz(rads=np.pi)(q0),
         cirq.Rz(rads=np.pi / 2)(q0),
         cirq.Rz(rads=np.pi / 4)(q0),
+        cirq.MatrixGate(cirq.unitary(cirq.H) @ cirq.unitary(cirq.T)).on(q0),
         cirq.CZ(q0, q1),
         cirq.CZ(q0, q1) ** 0.25,  # Requires 2-qubit decomposition
         cirq.CNOT(q0, q1),
@@ -327,8 +328,8 @@ def _all_operations(q0, q1, q2, q3, q4, include_measurements=True):
         )
         if include_measurements
         else (),
-        DummyOperation(),
-        DummyCompositeOperation(),
+        ExampleOperation(),
+        ExampleCompositeOperation(),
     )
 
 
@@ -403,6 +404,7 @@ ry(pi*0.25) q[0];
 rz(pi*1.0) q[0];
 rz(pi*0.5) q[0];
 rz(pi*0.25) q[0];
+u3(pi*1.5,pi*1.0,pi*0.25) q[0];
 cz q[0],q[1];
 
 // Gate: CZ**0.25
@@ -537,9 +539,9 @@ measure q[2] -> m_multi[1];
 x q[2];  // Undo the inversion
 measure q[3] -> m_multi[2];
 
-// Dummy operation
+// Example operation
 
-// Operation: DummyCompositeOperation()
+// Operation: ExampleCompositeOperation()
 x q[0];
 """
     )

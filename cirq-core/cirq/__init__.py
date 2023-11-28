@@ -16,6 +16,8 @@
 
 from cirq import _import
 
+from cirq._compat import __cirq_debug__, with_debug
+
 # A module can only depend on modules imported earlier in this list of modules
 # at import time.  Pytest will fail otherwise (enforced by
 # dev_tools/import_test.py).
@@ -42,7 +44,6 @@ from cirq import (
     # Core
     circuits,
     # Optimize and run
-    optimizers,
     work,
     sim,
     vis,
@@ -66,7 +67,6 @@ from cirq.circuits import (
     AbstractCircuit,
     Alignment,
     Circuit,
-    CircuitDag,
     CircuitOperation,
     FrozenCircuit,
     InsertStrategy,
@@ -74,9 +74,7 @@ from cirq.circuits import (
     PointOptimizationSummary,
     PointOptimizer,
     QasmOutput,
-    QuilOutput,
     TextDiagramDrawer,
-    Unique,
 )
 
 from cirq.devices import (
@@ -110,15 +108,10 @@ from cirq.experiments import (
     estimate_parallel_single_qubit_readout_errors,
     estimate_single_qubit_readout_errors,
     hog_score_xeb_fidelity_from_probabilities,
-    least_squares_xeb_fidelity_from_expectations,
-    least_squares_xeb_fidelity_from_probabilities,
     linear_xeb_fidelity,
     linear_xeb_fidelity_from_probabilities,
     log_xeb_fidelity,
     log_xeb_fidelity_from_probabilities,
-    generate_boixo_2018_supremacy_circuits_v2,
-    generate_boixo_2018_supremacy_circuits_v2_bristlecone,
-    generate_boixo_2018_supremacy_circuits_v2_grid,
     measure_confusion_matrix,
     xeb_fidelity,
 )
@@ -186,7 +179,6 @@ from cirq.ops import (
     AnyIntegerPowerGateFamily,
     AnyUnitaryGateFamily,
     ArithmeticGate,
-    ArithmeticOperation,
     asymmetric_depolarize,
     AsymmetricDepolarizingChannel,
     BaseDensePauliString,
@@ -232,6 +224,7 @@ from cirq.ops import (
     givens,
     GlobalPhaseGate,
     global_phase_operation,
+    GreedyQubitManager,
     H,
     HPowGate,
     I,
@@ -246,6 +239,7 @@ from cirq.ops import (
     LinearCombinationOfOperations,
     MatrixGate,
     MixedUnitaryChannel,
+    M,
     measure,
     measure_each,
     measure_paulistring_terms,
@@ -273,7 +267,6 @@ from cirq.ops import (
     PauliSum,
     PauliSumExponential,
     PauliSumLike,
-    PauliTransform,
     phase_damp,
     phase_flip,
     PhaseDampingChannel,
@@ -284,6 +277,7 @@ from cirq.ops import (
     PhasedXZGate,
     PhaseFlipChannel,
     StatePreparationChannel,
+    ProductOfSums,
     ProjectorString,
     ProjectorSum,
     RandomGateChannel,
@@ -291,12 +285,15 @@ from cirq.ops import (
     qft,
     Qid,
     QuantumFourierTransformGate,
+    QubitManager,
     QubitOrder,
     QubitOrderOrList,
     QubitPermutationGate,
+    R,
     reset,
     reset_each,
     ResetChannel,
+    RoutingSwapTag,
     riswap,
     Rx,
     Ry,
@@ -305,13 +302,14 @@ from cirq.ops import (
     ry,
     rz,
     S,
+    SimpleQubitManager,
     SingleQubitCliffordGate,
-    SingleQubitGate,
     SingleQubitPauliStringGateOperation,
     SQRT_ISWAP,
     SQRT_ISWAP_INV,
     SWAP,
     SwapPowGate,
+    SumOfProducts,
     T,
     TaggedOperation,
     ThreeQubitDiagonalGate,
@@ -335,24 +333,8 @@ from cirq.ops import (
     ZZPowGate,
 )
 
-from cirq.optimizers import (
-    AlignLeft,
-    AlignRight,
-    ConvertToCzAndSingleGates,
-    DropEmptyMoments,
-    DropNegligible,
-    EjectPhasedPaulis,
-    EjectZ,
-    ExpandComposite,
-    merge_single_qubit_gates_into_phased_x_z,
-    merge_single_qubit_gates_into_phxz,
-    MergeInteractions,
-    MergeInteractionsToSqrtIswap,
-    MergeSingleQubitGates,
-    SynchronizeTerminalMeasurements,
-)
-
 from cirq.transformers import (
+    AbstractInitialMapper,
     align_left,
     align_right,
     CompilationTargetGateset,
@@ -372,7 +354,11 @@ from cirq.transformers import (
     eject_phased_paulis,
     eject_z,
     expand_composite,
+    HardCodedInitialMapper,
     is_negligible_turn,
+    LineInitialMapper,
+    MappingManager,
+    map_clean_and_borrowable_qubits,
     map_moments,
     map_operations,
     map_operations_and_unroll,
@@ -387,7 +373,11 @@ from cirq.transformers import (
     optimize_for_target_gateset,
     parameterized_2q_op_to_sqrt_iswap_operations,
     prepare_two_qubit_state_using_cz,
+    prepare_two_qubit_state_using_iswap,
     prepare_two_qubit_state_using_sqrt_iswap,
+    quantum_shannon_decomposition,
+    RouteCQC,
+    routed_circuit_with_mapping,
     SqrtIswapTargetGateset,
     single_qubit_matrix_to_gates,
     single_qubit_matrix_to_pauli_rotations,
@@ -401,6 +391,7 @@ from cirq.transformers import (
     TransformerLogger,
     three_qubit_matrix_to_operations,
     transformer,
+    two_qubit_matrix_to_cz_isometry,
     two_qubit_matrix_to_cz_operations,
     two_qubit_matrix_to_diagonal_and_cz_operations,
     two_qubit_matrix_to_ion_operations,
@@ -449,14 +440,8 @@ from cirq.qis import (
 )
 
 from cirq.sim import (
-    ActOnArgs,
-    ActOnArgsContainer,
-    ActOnCliffordTableauArgs,
-    ActOnDensityMatrixArgs,
-    ActOnStabilizerCHFormArgs,
-    ActOnStabilizerArgs,
-    ActOnStateVectorArgs,
     CIRCUIT_LIKE,
+    ClassicalStateSimulator,
     CliffordSimulator,
     CliffordState,
     CliffordSimulatorStepResult,
@@ -464,14 +449,12 @@ from cirq.sim import (
     CliffordTrialResult,
     DensityMatrixSimulationState,
     DensityMatrixSimulator,
-    DensityMatrixSimulatorState,
     DensityMatrixStepResult,
     DensityMatrixTrialResult,
     measure_density_matrix,
     measure_state_vector,
     final_density_matrix,
     final_state_vector,
-    OperationTarget,
     sample,
     sample_density_matrix,
     sample_state_vector,
@@ -496,7 +479,6 @@ from cirq.sim import (
     StabilizerStateChForm,
     StateVectorMixin,
     StateVectorSimulationState,
-    StateVectorSimulatorState,
     StateVectorStepResult,
     StateVectorTrialResult,
     StepResult,
@@ -527,6 +509,7 @@ from cirq.study import (
     Result,
     UnitSweep,
     Zip,
+    ZipLongest,
 )
 
 from cirq.value import (
@@ -590,6 +573,7 @@ from cirq.protocols import (
     decompose,
     decompose_once,
     decompose_once_with_qubits,
+    DecompositionContext,
     DEFAULT_RESOLVERS,
     definitely_commutes,
     equal_up_to_global_phase,
@@ -623,8 +607,6 @@ from cirq.protocols import (
     qasm,
     QasmArgs,
     qid_shape,
-    quil,
-    QuilFormatter,
     read_json_gzip,
     read_json,
     resolve_parameters,
@@ -670,13 +652,7 @@ from cirq.protocols import (
     with_rescoped_keys,
 )
 
-from cirq.ion import ConvertToIonGates, IonDevice
-from cirq.neutral_atoms import (
-    ConvertToNeutralAtomGates,
-    is_native_neutral_atom_gate,
-    is_native_neutral_atom_op,
-    NeutralAtomDevice,
-)
+from cirq.neutral_atoms import is_native_neutral_atom_gate, is_native_neutral_atom_op
 
 from cirq.vis import (
     Heatmap,
@@ -706,20 +682,5 @@ _register_resolver(_class_resolver_dictionary)
 # contrib's json resolver cache depends on cirq.DEFAULT_RESOLVER
 
 from cirq import contrib
-
-# deprecate cirq.ops and related attributes
-
-from cirq import _compat
-
-_compat.deprecated_submodule(
-    new_module_name='cirq.circuits.moment',
-    old_parent='cirq.ops',
-    old_child='moment',
-    deadline='v0.16',
-    create_attribute=True,
-)
-
-ops.Moment = Moment  # type: ignore
-_compat.deprecate_attributes('cirq.ops', {'Moment': ('v0.16', 'Use cirq.circuits.Moment instead')})
 
 # pylint: enable=wrong-import-position

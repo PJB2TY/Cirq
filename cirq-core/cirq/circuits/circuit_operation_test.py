@@ -20,6 +20,7 @@ import sympy
 
 import cirq
 import cirq.circuits.circuit_operation as circuit_operation
+from cirq import _compat
 from cirq.circuits.circuit_operation import _full_join_string_lists
 
 ALL_SIMULATORS = (cirq.Simulator(), cirq.DensityMatrixSimulator(), cirq.CliffordSimulator())
@@ -90,10 +91,11 @@ def test_is_measurement_memoization():
     a = cirq.LineQubit(0)
     circuit = cirq.FrozenCircuit(cirq.measure(a, key='m'))
     c_op = cirq.CircuitOperation(circuit)
-    assert circuit._has_measurements is None
-    # Memoize `_has_measurements` in the circuit.
+    cache_name = _compat._method_cache_name(circuit._is_measurement_)
+    assert not hasattr(circuit, cache_name)
+    # Memoize `_is_measurement_` in the circuit.
     assert cirq.is_measurement(c_op)
-    assert circuit._has_measurements is True
+    assert hasattr(circuit, cache_name)
 
 
 def test_invalid_measurement_keys():
@@ -267,12 +269,12 @@ def test_recursive_params():
 
     # First example should behave like an X when simulated
     result = cirq.Simulator().simulate(cirq.Circuit(circuitop), param_resolver=outer_params)
-    assert np.allclose(result.state_vector(copy=False), [0, 1])
+    assert np.allclose(result.state_vector(), [0, 1])
 
 
 @pytest.mark.parametrize('add_measurements', [True, False])
 @pytest.mark.parametrize('use_default_ids_for_initial_rep', [True, False])
-def test_repeat(add_measurements, use_default_ids_for_initial_rep):
+def test_repeat(add_measurements: bool, use_default_ids_for_initial_rep: bool) -> None:
     a, b = cirq.LineQubit.range(2)
     circuit = cirq.Circuit(cirq.H(a), cirq.CX(a, b))
     if add_measurements:
@@ -325,9 +327,9 @@ def test_repeat(add_measurements, use_default_ids_for_initial_rep):
         _ = op_base.repeat()
 
     with pytest.raises(TypeError, match='Only integer or sympy repetitions are allowed'):
-        _ = op_base.repeat(1.3)
-    assert op_base.repeat(3.00000000001).repetitions == 3
-    assert op_base.repeat(2.99999999999).repetitions == 3
+        _ = op_base.repeat(1.3)  # type: ignore[arg-type]
+    assert op_base.repeat(3.00000000001).repetitions == 3  # type: ignore[arg-type]
+    assert op_base.repeat(2.99999999999).repetitions == 3  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize('add_measurements', [True, False])
@@ -343,13 +345,13 @@ def test_repeat_zero_times(add_measurements, use_repetition_ids, initial_reps):
         subcircuit.freeze(), repetitions=initial_reps, use_repetition_ids=use_repetition_ids
     )
     result = cirq.Simulator().simulate(cirq.Circuit(op))
-    assert np.allclose(result.state_vector(copy=False), [0, 1] if initial_reps % 2 else [1, 0])
+    assert np.allclose(result.state_vector(), [0, 1] if initial_reps % 2 else [1, 0])
     result = cirq.Simulator().simulate(cirq.Circuit(op**0))
-    assert np.allclose(result.state_vector(copy=False), [1, 0])
+    assert np.allclose(result.state_vector(), [1, 0])
 
 
 def test_no_repetition_ids():
-    def default_repetition_ids(self):
+    def default_repetition_ids(self):  # pragma: no cover
         assert False, "Should not call default_repetition_ids"
 
     with mock.patch.object(circuit_operation, 'default_repetition_ids', new=default_repetition_ids):
@@ -375,13 +377,13 @@ def test_parameterized_repeat():
     assert cirq.parameter_names(op) == {'a'}
     assert not cirq.has_unitary(op)
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 0})
-    assert np.allclose(result.state_vector(copy=False), [1, 0])
+    assert np.allclose(result.state_vector(), [1, 0])
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 1})
-    assert np.allclose(result.state_vector(copy=False), [0, 1])
+    assert np.allclose(result.state_vector(), [0, 1])
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 2})
-    assert np.allclose(result.state_vector(copy=False), [1, 0])
+    assert np.allclose(result.state_vector(), [1, 0])
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': -1})
-    assert np.allclose(result.state_vector(copy=False), [0, 1])
+    assert np.allclose(result.state_vector(), [0, 1])
     with pytest.raises(TypeError, match='Only integer or sympy repetitions are allowed'):
         cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 1.5})
     with pytest.raises(ValueError, match='Circuit contains ops whose symbols were not specified'):
@@ -390,13 +392,13 @@ def test_parameterized_repeat():
     assert cirq.parameter_names(op) == {'a'}
     assert not cirq.has_unitary(op)
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 0})
-    assert np.allclose(result.state_vector(copy=False), [1, 0])
+    assert np.allclose(result.state_vector(), [1, 0])
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 1})
-    assert np.allclose(result.state_vector(copy=False), [0, 1])
+    assert np.allclose(result.state_vector(), [0, 1])
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 2})
-    assert np.allclose(result.state_vector(copy=False), [1, 0])
+    assert np.allclose(result.state_vector(), [1, 0])
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': -1})
-    assert np.allclose(result.state_vector(copy=False), [0, 1])
+    assert np.allclose(result.state_vector(), [0, 1])
     with pytest.raises(TypeError, match='Only integer or sympy repetitions are allowed'):
         cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 1.5})
     with pytest.raises(ValueError, match='Circuit contains ops whose symbols were not specified'):
@@ -405,11 +407,11 @@ def test_parameterized_repeat():
     assert cirq.parameter_names(op) == {'a', 'b'}
     assert not cirq.has_unitary(op)
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 1, 'b': 1})
-    assert np.allclose(result.state_vector(copy=False), [0, 1])
+    assert np.allclose(result.state_vector(), [0, 1])
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 2, 'b': 1})
-    assert np.allclose(result.state_vector(copy=False), [1, 0])
+    assert np.allclose(result.state_vector(), [1, 0])
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 1, 'b': 2})
-    assert np.allclose(result.state_vector(copy=False), [1, 0])
+    assert np.allclose(result.state_vector(), [1, 0])
     with pytest.raises(TypeError, match='Only integer or sympy repetitions are allowed'):
         cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 1.5, 'b': 1})
     with pytest.raises(ValueError, match='Circuit contains ops whose symbols were not specified'):
@@ -418,11 +420,11 @@ def test_parameterized_repeat():
     assert cirq.parameter_names(op) == {'a', 'b'}
     assert not cirq.has_unitary(op)
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 1, 'b': 1})
-    assert np.allclose(result.state_vector(copy=False), [1, 0])
+    assert np.allclose(result.state_vector(), [1, 0])
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 1.5, 'b': 1})
-    assert np.allclose(result.state_vector(copy=False), [0, 1])
+    assert np.allclose(result.state_vector(), [0, 1])
     result = cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 1, 'b': 1.5})
-    assert np.allclose(result.state_vector(copy=False), [0, 1])
+    assert np.allclose(result.state_vector(), [0, 1])
     with pytest.raises(TypeError, match='Only integer or sympy repetitions are allowed'):
         cirq.Simulator().simulate(cirq.Circuit(op), param_resolver={'a': 1.5, 'b': 1.5})
     with pytest.raises(ValueError, match='Circuit contains ops whose symbols were not specified'):
@@ -539,7 +541,7 @@ def test_string_format():
 
     fc0 = cirq.FrozenCircuit()
     op0 = cirq.CircuitOperation(fc0)
-    assert str(op0) == f"[  ]"
+    assert str(op0) == "[  ]"
 
     fc0_global_phase_inner = cirq.FrozenCircuit(
         cirq.global_phase_operation(1j), cirq.global_phase_operation(1j)
@@ -551,7 +553,7 @@ def test_string_format():
     op0_global_phase_outer = cirq.CircuitOperation(fc0_global_phase_outer)
     assert (
         str(op0_global_phase_outer)
-        == f"""\
+        == """\
 [                       ]
 [                       ]
 [ global phase:   -0.5π ]"""
@@ -561,7 +563,7 @@ def test_string_format():
     op1 = cirq.CircuitOperation(fc1)
     assert (
         str(op1)
-        == f"""\
+        == """\
 [ 0: ───X───────M('m')─── ]
 [               │         ]
 [ 1: ───H───@───M──────── ]
@@ -597,10 +599,10 @@ cirq.CircuitOperation(
     )
     assert (
         str(op2)
-        == f"""\
+        == """\
 [ 0: ───X───X─── ]
 [           │    ]
-[ 1: ───H───@─── ](qubit_map={{q(1): q(2)}}, parent_path=('outer', 'inner'),\
+[ 1: ───H───@─── ](qubit_map={q(1): q(2)}, parent_path=('outer', 'inner'),\
  repetition_ids=['a', 'b', 'c'])"""
     )
     assert (
@@ -633,9 +635,9 @@ cirq.CircuitOperation(
     indented_fc3_repr = repr(fc3).replace('\n', '\n    ')
     assert (
         str(op3)
-        == f"""\
-[ 0: ───X^b───M('m')─── ](qubit_map={{q(0): q(1)}}, \
-key_map={{m: p}}, params={{b: 2}})"""
+        == """\
+[ 0: ───X^b───M('m')─── ](qubit_map={q(0): q(1)}, \
+key_map={m: p}, params={b: 2})"""
     )
     assert (
         repr(op3)

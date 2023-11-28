@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import dataclasses
-from typing import Any, cast, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 
 
 import numpy as np
 
-from cirq import _compat, protocols, value, linalg, qis
+from cirq import protocols, value, linalg, qis
 from cirq._import import LazyLoader
 from cirq.ops import common_gates, named_qubit, raw_types, pauli_gates, phased_x_z_gate
 from cirq.ops.pauli_gates import Pauli
@@ -33,15 +32,8 @@ sim = LazyLoader("sim", globals(), "cirq.sim")
 transformers = LazyLoader("transformers", globals(), "cirq.transformers")
 
 
-@_compat.deprecated_class(deadline='v0.16', fix='Use DensePauliString instead.')
-@dataclasses.dataclass
-class PauliTransform:
-    to: Pauli
-    flip: bool
-
-
 def _to_pauli_tuple(matrix: np.ndarray) -> Optional[Tuple[Pauli, bool]]:
-    """Converts matrix to PauliTransform.
+    """Converts matrix to Pauli gate.
 
     If matrix is not ±Pauli matrix, returns None.
     """
@@ -83,12 +75,6 @@ def _to_clifford_tableau(
     return clifford_tableau
 
 
-def _pretend_initialized() -> 'SingleQubitCliffordGate':
-    # HACK: This is a workaround to fool mypy and pylint into correctly handling
-    # class fields that can't be initialized until after the class is defined.
-    pass
-
-
 def _validate_map_input(
     required_transform_count: int,
     pauli_map_to: Optional[Dict[Pauli, Tuple[Pauli, bool]]],
@@ -98,13 +84,14 @@ def _validate_map_input(
 ) -> Dict[Pauli, Tuple[Pauli, bool]]:
     if pauli_map_to is None:
         xyz_to = {pauli_gates.X: x_to, pauli_gates.Y: y_to, pauli_gates.Z: z_to}
-        pauli_map_to = {cast(Pauli, p): trans for p, trans in xyz_to.items() if trans is not None}
+        pauli_map_to = {p: trans for p, trans in xyz_to.items() if trans is not None}
     elif x_to is not None or y_to is not None or z_to is not None:
         raise ValueError(
             '{} can take either pauli_map_to or a combination'
             ' of x_to, y_to, and z_to but both were given'
         )
     if len(pauli_map_to) != required_transform_count:
+        # pylint: disable=consider-using-f-string
         raise ValueError(
             'Method takes {} transform{} but {} {} given'.format(
                 required_transform_count,
@@ -174,7 +161,7 @@ class CommonCliffordGateMetaClass(value.ABCMetaImplementAnyOneOf):
                     _to_clifford_tableau(x_to=x_to, z_to=z_to)
                 )
 
-            # Order in is relied on in properties that retrieve a specific Clifford below.
+            # Order matters: it's relied upon in properties that retrieve a specific Clifford below.
             cls._all_single_qubit_cliffords = (
                 # 0: Identity
                 from_xz(x_to=pX, z_to=pZ),  # I
@@ -448,7 +435,6 @@ class CliffordGate(raw_types.Gate, CommonCliffordGates):
     def _act_on_(
         self, sim_state: 'cirq.SimulationStateBase', qubits: Sequence['cirq.Qid']
     ) -> Union[NotImplementedType, bool]:
-
         # Note the computation complexity difference between _decompose_ and _act_on_.
         # Suppose this Gate has `m` qubits, args has `n` qubits, and the decomposition of
         # this operation into `k` operations:
@@ -462,7 +448,7 @@ class CliffordGate(raw_types.Gate, CommonCliffordGates):
             sim_state._state = sim_state.tableau.then(padded_tableau)
             return True
 
-        if isinstance(sim_state, sim.clifford.StabilizerChFormSimulationState):  # coverage: ignore
+        if isinstance(sim_state, sim.clifford.StabilizerChFormSimulationState):  # pragma: no cover
             # Do we know how to apply CliffordTableau on StabilizerChFormSimulationState?
             # It should be unlike because CliffordTableau ignores the global phase but CHForm
             # is aimed to fix that.
@@ -539,9 +525,7 @@ class SingleQubitCliffordGate(CliffordGate):
             trans_to2 = trans_from
             flip2 = not flip
         rotation_map[trans_from2] = (trans_to2, flip2)
-        return SingleQubitCliffordGate.from_double_map(
-            cast(Dict[Pauli, Tuple[Pauli, bool]], rotation_map)
-        )
+        return SingleQubitCliffordGate.from_double_map(rotation_map)
 
     @staticmethod
     def from_double_map(
@@ -677,11 +661,6 @@ class SingleQubitCliffordGate(CliffordGate):
         coefficient = -1 if pauli_tuple[1] else 1
         return dense_pauli_string.DensePauliString(str(pauli_tuple[0]), coefficient=coefficient)
 
-    @_compat.deprecated(deadline='v0.16', fix='Use pauli_tuple() or dense_pauli_string() instead')
-    def transform(self, pauli: Pauli) -> PauliTransform:
-        pauli_tuple = self.pauli_tuple(pauli)
-        return PauliTransform(to=pauli_tuple[0], flip=pauli_tuple[1])
-
     def to_phased_xz_gate(self) -> phased_x_z_gate.PhasedXZGate:
         """Convert this gate to a PhasedXZGate instance.
 
@@ -704,25 +683,26 @@ class SingleQubitCliffordGate(CliffordGate):
         flip_index = int(z_to_flip) * 2 + x_to_flip
         a, x, z = 0.0, 0.0, 0.0
 
-        if np.array_equal(self.clifford_tableau.matrix(), [[1, 0], [0, 1]]):
+        matrix = self.clifford_tableau.matrix()
+        if np.array_equal(matrix, [[1, 0], [0, 1]]):
             # I, Z, X, Y cases
             to_phased_xz = [(0.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 0.0), (0.5, 1.0, 0.0)]
             a, x, z = to_phased_xz[flip_index]
-        elif np.array_equal(self.clifford_tableau.matrix(), [[1, 0], [1, 1]]):
+        elif np.array_equal(matrix, [[1, 0], [1, 1]]):
             # +/- X_sqrt, 2 Hadamard-like gates acting on the YZ plane
             a = 0.0
             x = 0.5 if x_to_flip ^ z_to_flip else -0.5
             z = 1.0 if x_to_flip else 0.0
-        elif np.array_equal(self.clifford_tableau.matrix(), [[0, 1], [1, 0]]):
+        elif np.array_equal(matrix, [[0, 1], [1, 0]]):
             # +/- Y_sqrt, 2 Hadamard-like gates acting on the XZ plane
             a = 0.5
             x = 0.5 if x_to_flip else -0.5
             z = 0.0 if x_to_flip ^ z_to_flip else 1.0
-        elif np.array_equal(self.clifford_tableau.matrix(), [[1, 1], [0, 1]]):
+        elif np.array_equal(matrix, [[1, 1], [0, 1]]):
             # +/- Z_sqrt, 2 Hadamard-like gates acting on the XY plane
             to_phased_xz = [(0.0, 0.0, 0.5), (0.0, 0.0, -0.5), (0.25, 1.0, 0.0), (-0.25, 1.0, 0.0)]
             a, x, z = to_phased_xz[flip_index]
-        elif np.array_equal(self.clifford_tableau.matrix(), [[0, 1], [1, 1]]):
+        elif np.array_equal(matrix, [[0, 1], [1, 1]]):
             # axis swapping rotation -- (312) permutation
             a = 0.5
             x = 0.5 if x_to_flip else -0.5
@@ -730,7 +710,7 @@ class SingleQubitCliffordGate(CliffordGate):
         else:
             # axis swapping rotation -- (231) permutation.
             # This should be the only cases left.
-            assert np.array_equal(self.clifford_tableau.matrix(), [[1, 1], [1, 0]])
+            assert np.array_equal(matrix, [[1, 1], [1, 0]])
             a = 0.0
             x = -0.5 if x_to_flip ^ z_to_flip else 0.5
             z = -0.5 if x_to_flip else 0.5
@@ -867,8 +847,7 @@ class SingleQubitCliffordGate(CliffordGate):
                 ]
 
             return [(pauli_gates.Z, 1 if y_rot[1] else -1), (pauli_gates.X, 1 if z_rot[1] else -1)]
-        # coverage: ignore
-        assert (
+        assert (  # pragma: no cover
             False
         ), 'Impossible condition where this gate only rotates one Pauli to a different Pauli.'
 
@@ -879,16 +858,7 @@ class SingleQubitCliffordGate(CliffordGate):
         return self.merged_with(after).merged_with(self**-1)
 
     def __repr__(self) -> str:
-        x = self.pauli_tuple(pauli_gates.X)
-        y = self.pauli_tuple(pauli_gates.Y)
-        z = self.pauli_tuple(pauli_gates.Z)
-        x_sign = '-' if x[1] else '+'
-        y_sign = '-' if y[1] else '+'
-        z_sign = '-' if z[1] else '+'
-        return (
-            f'cirq.SingleQubitCliffordGate(X:{x_sign}{x[0]!s}, '
-            f'Y:{y_sign}{y[0]!s}, Z:{z_sign}{z[0]!s})'
-        )
+        return f'cirq.CliffordGate.from_clifford_tableau({self.clifford_tableau!r})'
 
     def _circuit_diagram_info_(
         self, args: 'cirq.CircuitDiagramInfoArgs'

@@ -20,10 +20,10 @@ import math
 from typing import (
     Any,
     Callable,
+    cast,
     Iterable,
     List,
     Optional,
-    Sequence,
     Set,
     Tuple,
     TYPE_CHECKING,
@@ -34,7 +34,7 @@ from typing import (
 import matplotlib.pyplot as plt
 
 # this is for older systems with matplotlib <3.2 otherwise 3d projections fail
-from mpl_toolkits import mplot3d  # pylint: disable=unused-import
+from mpl_toolkits import mplot3d
 import numpy as np
 
 from cirq import value, protocols
@@ -71,7 +71,14 @@ def _rotation_matrix(angle: float) -> np.ndarray:
 
 
 def deconstruct_single_qubit_matrix_into_angles(mat: np.ndarray) -> Tuple[float, float, float]:
-    """Breaks down a 2x2 unitary into more useful ZYZ angle parameters.
+    r"""Breaks down a 2x2 unitary into ZYZ angle parameters.
+
+    Given a unitary U, this function returns three angles: $\phi_0, \phi_1, \phi_2$,
+    such that:  $U = Z^{\phi_2 / \pi} Y^{\phi_1 / \pi} Z^{\phi_0/ \pi}$
+    for the Pauli matrices Y and Z.  That is, phasing around Z by $\phi_0$ radians,
+    then rotating around Y by $\phi_1$ radians, and then phasing again by
+    $\phi_2$ radians will produce the same effect as the original unitary.
+    (Note that the matrices are applied right to left.)
 
     Args:
         mat: The 2x2 unitary matrix to break down.
@@ -548,7 +555,7 @@ def scatter_plot_normalized_kak_interaction_coefficients(
     interactions: Iterable[Union[np.ndarray, 'cirq.SupportsUnitary', 'KakDecomposition']],
     *,
     include_frame: bool = True,
-    ax: Optional[plt.Axes] = None,
+    ax: Optional[mplot3d.axes3d.Axes3D] = None,
     **kwargs,
 ):
     r"""Plots the interaction coefficients of many two-qubit operations.
@@ -627,14 +634,14 @@ def scatter_plot_normalized_kak_interaction_coefficients(
     show_plot = not ax
     if not ax:
         fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1, projection='3d')
+        ax = cast(mplot3d.axes3d.Axes3D, fig.add_subplot(1, 1, 1, projection='3d'))
 
     def coord_transform(
-        pts: Sequence[Tuple[float, float, float]]
-    ) -> Tuple[Iterable[float], Iterable[float], Iterable[float]]:
+        pts: Union[List[Tuple[int, int, int]], np.ndarray]
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         if len(pts) == 0:
-            return [], [], []
-        xs, ys, zs = zip(*pts)
+            return np.array([]), np.array([]), np.array([])
+        xs, ys, zs = np.transpose(pts)
         return xs, zs, ys
 
     if include_frame:
@@ -859,7 +866,7 @@ def kak_decomposition(
     # Recover pieces.
     a1, a0 = so4_to_magic_su2s(left.T, atol=atol, rtol=rtol, check_preconditions=False)
     b1, b0 = so4_to_magic_su2s(right.T, atol=atol, rtol=rtol, check_preconditions=False)
-    w, x, y, z = (KAK_GAMMA @ np.vstack(np.angle(d))).flatten()
+    w, x, y, z = (KAK_GAMMA @ np.angle(d).reshape(-1, 1)).flatten()
     g = np.exp(1j * w)
 
     # Canonicalize.

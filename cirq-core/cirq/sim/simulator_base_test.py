@@ -34,7 +34,7 @@ class CountingState(cirq.qis.QuantumStateRepresentation):
         self.measurement_count += 1
         return [self.gate_count]
 
-    def kron(self: 'CountingState', other: 'CountingState') -> 'CountingState':
+    def kron(self, other: 'CountingState') -> 'CountingState':
         return CountingState(
             self.data,
             self.gate_count + other.gate_count,
@@ -43,13 +43,13 @@ class CountingState(cirq.qis.QuantumStateRepresentation):
         )
 
     def factor(
-        self: 'CountingState', axes: Sequence[int], *, validate=True, atol=1e-07
+        self, axes: Sequence[int], *, validate=True, atol=1e-07
     ) -> Tuple['CountingState', 'CountingState']:
         return CountingState(
             self.data, self.gate_count, self.measurement_count, self.copy_count
         ), CountingState(self.data)
 
-    def reindex(self: 'CountingState', axes: Sequence[int]) -> 'CountingState':
+    def reindex(self, axes: Sequence[int]) -> 'CountingState':
         return CountingState(self.data, self.gate_count, self.measurement_count, self.copy_count)
 
     def copy(self, deep_copy_buffers: bool = True) -> 'CountingState':
@@ -434,57 +434,3 @@ def test_inhomogeneous_measurement_count_padding():
     results = sim.run(c, repetitions=10)
     for i in range(10):
         assert np.sum(results.records['m'][i, :, :]) == 1
-
-
-def test_deprecated_final_step_result():
-    class OldCountingSimulator(CountingSimulator):
-        def _create_simulator_trial_result(  # type: ignore
-            self,
-            params: cirq.ParamResolver,
-            measurements: Dict[str, np.ndarray],
-            final_step_result: CountingStepResult,
-        ) -> CountingTrialResult:
-            return CountingTrialResult(params, measurements, final_step_result=final_step_result)
-
-    sim = OldCountingSimulator()
-    with cirq.testing.assert_deprecated('final_step_result', deadline='0.16'):
-        r = sim.simulate(cirq.Circuit())
-    assert r._final_simulator_state.gate_count == 0
-    assert r._final_simulator_state.measurement_count == 0
-
-
-def test_deprecated_create_partial_act_on_args():
-    class DeprecatedSim(cirq.SimulatorBase):
-        def _create_partial_act_on_args(self, initial_state, qubits, classical_data):
-            return 0
-
-        def _create_step_result(self):
-            pass
-
-        def _create_simulator_trial_result(self):
-            pass
-
-    sim = DeprecatedSim()
-    with cirq.testing.assert_deprecated(deadline='v0.16'):
-        sim.simulate_moment_steps(cirq.Circuit())
-
-
-def test_deprecated_qubits_param():
-    class Sim(cirq.SimulatorBase):
-        def _create_partial_simulation_state(self, initial_state, qubits, classical_data):
-            return 0
-
-        def _create_step_result(self):
-            pass
-
-        def _create_simulator_trial_result(self):
-            pass
-
-    with cirq.testing.assert_deprecated('`qubits` parameter of `_base_iterator', deadline='v0.16'):
-        Sim()._base_iterator(cirq.Circuit(), cirq.QubitOrder.explicit([]), 0)
-
-
-def test_deprecated_setters():
-    sim = CountingSimulator()
-    with cirq.testing.assert_deprecated(deadline='v0.16'):
-        sim.noise = cirq.ConstantQubitNoiseModel(cirq.Z)

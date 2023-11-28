@@ -146,7 +146,7 @@ def test_non_measurement_with_key():
             assert False
 
         def num_qubits(self) -> int:
-            return 2  # coverage: ignore
+            return 2  # pragma: no cover
 
     assert not cirq.is_measurement(NonMeasurementGate())
 
@@ -238,18 +238,3 @@ def test_measurement_key_path():
     assert cirq.measurement_key_names(mkg_cd) == {'c:d:a', 'c:d:b'}
 
     assert cirq.with_key_path(cirq.X, ('c', 'd')) is NotImplemented
-
-
-def test_measurement_key_enumerable_deprecated():
-    class Deprecated:
-        def _measurement_key_objs_(self):
-            return [cirq.MeasurementKey('key')]
-
-        def _measurement_key_names_(self):
-            return ['key']
-
-    with cirq.testing.assert_deprecated('frozenset', deadline='v0.16'):
-        assert cirq.measurement_key_objs(Deprecated()) == {cirq.MeasurementKey('key')}
-
-    with cirq.testing.assert_deprecated('frozenset', deadline='v0.16'):
-        assert cirq.measurement_key_names(Deprecated()) == {'key'}

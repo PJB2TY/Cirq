@@ -820,7 +820,7 @@ def run_calibrations(
 
     if isinstance(sampler, AbstractEngine):
         if processor_id is None:
-            raise ValueError('processor_id must be provided.')  # coverage: ignore
+            raise ValueError('processor_id must be provided.')  # pragma: no cover
         processor: Optional[AbstractProcessor] = sampler.get_processor(processor_id=processor_id)
     elif isinstance(sampler, ProcessorSampler):
         processor = sampler.processor
@@ -828,7 +828,6 @@ def run_calibrations(
         processor = None
 
     if processor is not None:
-
         if calibration_request_type == LocalXEBPhasedFSimCalibrationRequest:
             engine_sampler = processor.get_sampler()
             return _run_local_calibrations_via_sampler(calibrations, engine_sampler)
@@ -1012,9 +1011,9 @@ def _make_zeta_chi_gamma_compensation(
             for index, operations in enumerate(
                 itertools.zip_longest(*decompositions, fillvalue=())
             ):
-                if index == moment_to_calibration_index:
-                    operations += tuple(other)
-                compensated += cirq.Moment(operations)
+                compensated += cirq.Moment(
+                    operations, other if index == moment_to_calibration_index else ()
+                )
             compensated_moment_to_calibration += decompositions_moment_to_calibration
         elif other:
             compensated += cirq.Moment(other)
@@ -1237,8 +1236,7 @@ def run_zeta_chi_gamma_compensation_for_moments(
     progress_func: Optional[Callable[[int, int], None]] = None,
     permit_mixed_moments: bool = False,
 ) -> Tuple[CircuitWithCalibration, List[PhasedFSimCalibrationResult]]:
-    """Compensates circuit against errors in zeta, chi and gamma angles by running calibrations on
-    the engine.
+    """Compensates circuit for errors in zeta, chi and gamma angles by running on the engine.
 
     The method calls prepare_floquet_characterization_for_moments to extract moments to
     characterize, run_calibrations to characterize them and

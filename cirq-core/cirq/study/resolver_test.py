@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """Tests for parameter resolvers."""
+
 import fractions
 
 import numpy as np
@@ -52,10 +53,10 @@ def test_value_of_transformed_types(val, resolved):
 
 @pytest.mark.parametrize('val,resolved', [(sympy.I, 1j)])
 def test_value_of_substituted_types(val, resolved):
-    _assert_consistent_resolution(val, resolved, True)
+    _assert_consistent_resolution(val, resolved)
 
 
-def _assert_consistent_resolution(v, resolved, subs_called=False):
+def _assert_consistent_resolution(v, resolved):
     """Asserts that parameter resolution works consistently.
 
     The ParamResolver.value_of method can resolve any Sympy expression -
@@ -69,7 +70,7 @@ def _assert_consistent_resolution(v, resolved, subs_called=False):
     Args:
         v: the value to resolve
         resolved: the expected resolution result
-        subs_called: if True, it is expected that the slow subs method is called
+
     Raises:
         AssertionError in case resolution assertion fail.
     """
@@ -92,9 +93,7 @@ def _assert_consistent_resolution(v, resolved, subs_called=False):
     # symbol based resolution
     s = SubsAwareSymbol('a')
     assert r.value_of(s) == resolved, f"expected {resolved}, got {r.value_of(s)}"
-    assert (
-        subs_called == s.called
-    ), f"For pass-through type {type(v)} sympy.subs shouldn't have been called."
+    assert not s.called, f"For pass-through type {type(v)} sympy.subs shouldn't have been called."
     assert isinstance(
         r.value_of(s), type(resolved)
     ), f"expected {type(resolved)} got {type(r.value_of(s))}"
@@ -227,25 +226,33 @@ def test_custom_resolved_value():
         def _resolved_value_(self):
             return self
 
-    class Bar:
-        def _resolved_value_(self):
-            return NotImplemented
-
     class Baz:
         def _resolved_value_(self):
             return 'Baz'
 
     foo = Foo()
-    bar = Bar()
     baz = Baz()
 
     a = sympy.Symbol('a')
-    b = sympy.Symbol('b')
-    c = sympy.Symbol('c')
-    r = cirq.ParamResolver({a: foo, b: bar, c: baz})
+    b = sympy.Symbol('c')
+    r = cirq.ParamResolver({a: foo, b: baz})
     assert r.value_of(a) is foo
-    assert r.value_of(b) is b
-    assert r.value_of(c) == 'Baz'
+    assert r.value_of(b) == 'Baz'
+
+
+def test_custom_value_not_implemented():
+    class BarImplicit:
+        pass
+
+    class BarExplicit:
+        def _resolved_value_(self):
+            return NotImplemented
+
+    for cls in [BarImplicit, BarExplicit]:
+        b = sympy.Symbol('b')
+        bar = cls()
+        r = cirq.ParamResolver({b: bar})
+        assert r.value_of(b) == b
 
 
 def test_compose():

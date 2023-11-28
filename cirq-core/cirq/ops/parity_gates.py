@@ -14,19 +14,29 @@
 
 """Quantum gates that phase with respect to product-of-pauli observables."""
 
-from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence
+from typing_extensions import Self
 
 import numpy as np
 
 from cirq import protocols, value
 from cirq._compat import proper_repr
 from cirq._doc import document
-from cirq.ops import gate_features, eigen_gate, common_gates, pauli_gates
+from cirq.ops import (
+    gate_features,
+    eigen_gate,
+    common_gates,
+    pauli_gates,
+    clifford_gate,
+    pauli_interaction_gate,
+)
+
 
 if TYPE_CHECKING:
     import cirq
 
 
+@value.value_equality
 class XXPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
     r"""The X-parity gate, possibly raised to a power.
 
@@ -85,24 +95,28 @@ class XXPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
         return abs(np.sin(self._exponent * 0.5 * np.pi))
 
     def _decompose_into_clifford_with_qubits_(self, qubits):
-        from cirq.ops.clifford_gate import SingleQubitCliffordGate
-        from cirq.ops.pauli_interaction_gate import PauliInteractionGate
-
         if self.exponent % 2 == 0:
             return []
         if self.exponent % 2 == 0.5:
             return [
-                PauliInteractionGate(pauli_gates.X, False, pauli_gates.X, False).on(*qubits),
-                SingleQubitCliffordGate.X_sqrt.on_each(*qubits),
+                pauli_interaction_gate.PauliInteractionGate(
+                    pauli_gates.X, False, pauli_gates.X, False
+                ).on(*qubits),
+                clifford_gate.SingleQubitCliffordGate.X_sqrt.on_each(*qubits),
             ]
         if self.exponent % 2 == 1:
-            return [SingleQubitCliffordGate.X.on_each(*qubits)]
+            return [clifford_gate.SingleQubitCliffordGate.X.on_each(*qubits)]
         if self.exponent % 2 == 1.5:
             return [
-                PauliInteractionGate(pauli_gates.X, False, pauli_gates.X, False).on(*qubits),
-                SingleQubitCliffordGate.X_nsqrt.on_each(*qubits),
+                pauli_interaction_gate.PauliInteractionGate(
+                    pauli_gates.X, False, pauli_gates.X, False
+                ).on(*qubits),
+                clifford_gate.SingleQubitCliffordGate.X_nsqrt.on_each(*qubits),
             ]
         return NotImplemented
+
+    def _has_stabilizer_effect_(self) -> bool:
+        return self.exponent % 2 in (0, 0.5, 1, 1.5)
 
     def _decompose_(self, qubits: Tuple['cirq.Qid', ...]) -> 'cirq.OP_TREE':
         yield common_gates.YPowGate(exponent=-0.5).on_each(*qubits)
@@ -114,19 +128,6 @@ class XXPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
     ) -> Union[str, 'protocols.CircuitDiagramInfo']:
         return protocols.CircuitDiagramInfo(
             wire_symbols=('XX', 'XX'), exponent=self._diagram_exponent(args)
-        )
-
-    def _quil_(
-        self, qubits: Tuple['cirq.Qid', ...], formatter: 'cirq.QuilFormatter'
-    ) -> Optional[str]:
-        if self._exponent == 1:
-            return formatter.format('X {0}\nX {1}\n', qubits[0], qubits[1])
-        return formatter.format(
-            'RX({0}) {1}\nRX({2}) {3}\n',
-            self._exponent * np.pi,
-            qubits[0],
-            self._exponent * np.pi,
-            qubits[1],
         )
 
     def __str__(self) -> str:
@@ -145,6 +146,7 @@ class XXPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
         )
 
 
+@value.value_equality
 class YYPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
     r"""The Y-parity gate, possibly raised to a power.
 
@@ -202,24 +204,28 @@ class YYPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
         return abs(np.sin(self._exponent * 0.5 * np.pi))
 
     def _decompose_into_clifford_with_qubits_(self, qubits):
-        from cirq.ops.clifford_gate import SingleQubitCliffordGate
-        from cirq.ops.pauli_interaction_gate import PauliInteractionGate
-
         if self.exponent % 2 == 0:
             return []
         if self.exponent % 2 == 0.5:
             return [
-                PauliInteractionGate(pauli_gates.Y, False, pauli_gates.Y, False).on(*qubits),
-                SingleQubitCliffordGate.Y_sqrt.on_each(*qubits),
+                pauli_interaction_gate.PauliInteractionGate(
+                    pauli_gates.Y, False, pauli_gates.Y, False
+                ).on(*qubits),
+                clifford_gate.SingleQubitCliffordGate.Y_sqrt.on_each(*qubits),
             ]
         if self.exponent % 2 == 1:
-            return [SingleQubitCliffordGate.Y.on_each(*qubits)]
+            return [clifford_gate.SingleQubitCliffordGate.Y.on_each(*qubits)]
         if self.exponent % 2 == 1.5:
             return [
-                PauliInteractionGate(pauli_gates.Y, False, pauli_gates.Y, False).on(*qubits),
-                SingleQubitCliffordGate.Y_nsqrt.on_each(*qubits),
+                pauli_interaction_gate.PauliInteractionGate(
+                    pauli_gates.Y, False, pauli_gates.Y, False
+                ).on(*qubits),
+                clifford_gate.SingleQubitCliffordGate.Y_nsqrt.on_each(*qubits),
             ]
         return NotImplemented
+
+    def _has_stabilizer_effect_(self) -> bool:
+        return self.exponent % 2 in (0, 0.5, 1, 1.5)
 
     def _decompose_(self, qubits: Tuple['cirq.Qid', ...]) -> 'cirq.OP_TREE':
         yield common_gates.XPowGate(exponent=0.5).on_each(*qubits)
@@ -231,20 +237,6 @@ class YYPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
     ) -> 'cirq.CircuitDiagramInfo':
         return protocols.CircuitDiagramInfo(
             wire_symbols=('YY', 'YY'), exponent=self._diagram_exponent(args)
-        )
-
-    def _quil_(
-        self, qubits: Tuple['cirq.Qid', ...], formatter: 'cirq.QuilFormatter'
-    ) -> Optional[str]:
-        if self._exponent == 1:
-            return formatter.format('Y {0}\nY {1}\n', qubits[0], qubits[1])
-
-        return formatter.format(
-            'RY({0}) {1}\nRY({2}) {3}\n',
-            self._exponent * np.pi,
-            qubits[0],
-            self._exponent * np.pi,
-            qubits[1],
         )
 
     def __str__(self) -> str:
@@ -263,6 +255,7 @@ class YYPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
         )
 
 
+@value.value_equality
 class ZZPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
     r"""The Z-parity gate, possibly raised to a power.
 
@@ -287,6 +280,34 @@ class ZZPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
         yield common_gates.CZPowGate(
             exponent=-2 * self.exponent, global_shift=-self.global_shift / 2
         )(qubits[0], qubits[1])
+
+    def _decompose_into_clifford_with_qubits_(
+        self, qubits: Sequence['cirq.Qid']
+    ) -> Sequence[Union['cirq.Operation', Sequence['cirq.Operation']]]:
+        if not self._has_stabilizer_effect_():
+            return NotImplemented
+        if self.exponent % 2 == 0:
+            return []
+        if self.exponent % 2 == 1:
+            return clifford_gate.SingleQubitCliffordGate.Z.on_each(*qubits)
+
+        if self.exponent % 2 == 0.5:
+            return [
+                pauli_interaction_gate.PauliInteractionGate(
+                    pauli_gates.Z, False, pauli_gates.Z, False
+                ).on(*qubits),
+                clifford_gate.SingleQubitCliffordGate.Z_sqrt.on_each(*qubits),
+            ]
+        else:
+            return [
+                pauli_interaction_gate.PauliInteractionGate(
+                    pauli_gates.Z, False, pauli_gates.Z, False
+                ).on(*qubits),
+                clifford_gate.SingleQubitCliffordGate.Z_nsqrt.on_each(*qubits),
+            ]
+
+    def _has_stabilizer_effect_(self) -> bool:
+        return self.exponent % 2 in (0, 0.5, 1, 1.5)
 
     def _eigen_components(self) -> List[Tuple[float, np.ndarray]]:
         return [(0, np.diag([1, 0, 0, 1])), (1, np.diag([0, 1, 1, 0]))]
@@ -322,19 +343,8 @@ class ZZPowGate(gate_features.InterchangeableQubitsGate, eigen_gate.EigenGate):
 
         return args.target_tensor
 
-    def _quil_(
-        self, qubits: Tuple['cirq.Qid', ...], formatter: 'cirq.QuilFormatter'
-    ) -> Optional[str]:
-        if self._exponent == 1:
-            return formatter.format('Z {0}\nZ {1}\n', qubits[0], qubits[1])
-
-        return formatter.format(
-            'RZ({0}) {1}\nRZ({2}) {3}\n',
-            self._exponent * np.pi,
-            qubits[0],
-            self._exponent * np.pi,
-            qubits[1],
-        )
+    def _phase_by_(self, phase_turns: float, qubit_index: int) -> "ZZPowGate":
+        return self
 
     def __str__(self) -> str:
         if self._exponent == 1:
@@ -369,7 +379,7 @@ class MSGate(XXPowGate):
         XXPowGate.__init__(self, exponent=rads * 2 / np.pi, global_shift=-0.5)
         self.rads = rads
 
-    def _with_exponent(self: 'MSGate', exponent: value.TParamVal) -> 'MSGate':
+    def _with_exponent(self, exponent: value.TParamVal) -> Self:
         return type(self)(rads=exponent * np.pi / 2)
 
     def _circuit_diagram_info_(

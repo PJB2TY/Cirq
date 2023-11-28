@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """A structure for encapsulating entire circuits in an operation.
 
 A CircuitOperation is an Operation object that wraps a FrozenCircuit. When
@@ -20,13 +21,14 @@ component operations in order, including any nested CircuitOperations.
 import math
 from typing import (
     Callable,
-    Mapping,
-    Sequence,
+    cast,
     Dict,
     FrozenSet,
     Iterator,
     List,
+    Mapping,
     Optional,
+    Sequence,
     Tuple,
     TYPE_CHECKING,
     Union,
@@ -59,9 +61,9 @@ def _full_join_string_lists(
     list1: Optional[Sequence[str]], list2: Optional[Sequence[str]]
 ) -> Optional[Sequence[str]]:
     if list1 is None and list2 is None:
-        return None  # coverage: ignore
+        return None  # pragma: no cover
     if list1 is None:
-        return list2  # coverage: ignore
+        return list2  # pragma: no cover
     if list2 is None:
         return list1
     return [f'{first}{REPETITION_ID_SEPARATOR}{second}' for first in list1 for second in list2]
@@ -78,7 +80,7 @@ class CircuitOperation(ops.Operation):
     def __init__(
         self,
         circuit: 'cirq.FrozenCircuit',
-        repetitions: int = 1,
+        repetitions: INT_TYPE = 1,
         qubit_map: Optional[Dict['cirq.Qid', 'cirq.Qid']] = None,
         measurement_key_map: Optional[Dict[str, str]] = None,
         param_resolver: Optional[study.ParamResolverOrSimilarType] = None,
@@ -402,7 +404,7 @@ class CircuitOperation(ops.Operation):
             if self.repetition_ids is not None
             and self.use_repetition_ids
             and protocols.is_measurement(self.circuit)
-            else self._mapped_single_loop() * abs(self.repetitions)
+            else self._mapped_single_loop() * cast(IntParam, abs(self.repetitions))
         )
         if deep:
             circuit = circuit.map_operations(
@@ -458,9 +460,7 @@ class CircuitOperation(ops.Operation):
         # TODO: support out-of-line subcircuit definition in string format.
         msg_lines = str(self.circuit).split('\n')
         msg_width = max([len(line) for line in msg_lines])
-        circuit_msg = '\n'.join(
-            '[ {line:<{width}} ]'.format(line=line, width=msg_width) for line in msg_lines
-        )
+        circuit_msg = '\n'.join(f'[ {line:<{msg_width}} ]' for line in msg_lines)
         args = []
 
         def dict_str(d: Mapping) -> str:
@@ -589,7 +589,7 @@ class CircuitOperation(ops.Operation):
                 # As CircuitOperation is immutable, this can safely return the original.
                 return self
 
-            expected_repetition_id_length = abs(repetitions)
+            expected_repetition_id_length: int = np.abs(repetitions)
 
             if repetition_ids is None:
                 if self.use_repetition_ids:
@@ -790,4 +790,8 @@ class CircuitOperation(ops.Operation):
         self, resolver: 'cirq.ParamResolver', recursive: bool
     ) -> 'cirq.CircuitOperation':
         resolved = self.with_params(resolver.param_dict, recursive)
-        return resolved.replace(repetitions=resolver.value_of(self.repetitions, recursive))
+        # repetitions can resolve to a float, but this is ok since constructor converts to
+        # nearby int.
+        return resolved.replace(
+            repetitions=resolver.value_of(cast('cirq.TParamVal', self.repetitions), recursive)
+        )

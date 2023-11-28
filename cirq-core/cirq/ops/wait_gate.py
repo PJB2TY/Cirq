@@ -34,7 +34,7 @@ class WaitGate(raw_types.Gate):
         self,
         duration: 'cirq.DURATION_LIKE',
         num_qubits: Optional[int] = None,
-        qid_shape: Tuple[int, ...] = None,
+        qid_shape: Optional[Tuple[int, ...]] = None,
     ) -> None:
         """Initialize a wait gate with the given duration.
 
@@ -131,9 +131,6 @@ class WaitGate(raw_types.Gate):
 
     def _value_equality_values_(self) -> Any:
         return self.duration
-
-    def _quil_(self, qubits: Tuple['cirq.Qid', ...], formatter: 'cirq.QuilFormatter'):
-        return 'WAIT\n'
 
 
 def wait(

@@ -59,7 +59,6 @@ from cirq_google.devices import (
     GoogleNoiseProperties,
     GridDevice,
     NoiseModelFromGoogleNoiseProperties,
-    SerializableDevice,
     Sycamore,
     Sycamore23,
 )
@@ -74,7 +73,6 @@ from cirq_google.engine import (
     EngineProcessor,
     EngineResult,
     ProtoVersion,
-    QuantumEngineSampler,
     ProcessorSampler,
     ValidatingSampler,
     get_engine,
@@ -91,20 +89,19 @@ from cirq_google.line import (
     LinePlacementStrategy,
 )
 
-from cirq_google.ops import CalibrationTag, FSimGateFamily, PhysicalZTag, SycamoreGate, SYC
-
-from cirq_google.optimizers import (
-    ConvertToXmonGates,
-    ConvertToSqrtIswapGates,
-    ConvertToSycamoreGates,
-    GateTabulation,
-    optimized_for_sycamore,
-    optimized_for_xmon,
+from cirq_google.ops import (
+    CalibrationTag,
+    FSimGateFamily,
+    InternalGate,
+    PhysicalZTag,
+    SYC,
+    SycamoreGate,
 )
 
 from cirq_google.transformers import (
     known_2q_op_to_sycamore_operations,
     two_qubit_matrix_to_sycamore_operations,
+    GoogleCZTargetGateset,
     SycamoreTargetGateset,
 )
 
@@ -113,18 +110,8 @@ from cirq_google.serialization import (
     CIRCUIT_SERIALIZER,
     CircuitSerializer,
     CircuitOpDeserializer,
-    DeserializingArg,
-    GateOpDeserializer,
     CircuitOpSerializer,
-    GateOpSerializer,
     Serializer,
-    SerializingArg,
-    SerializableGateSet,
-    XMON,
-    FSIM_GATESET,
-    SQRT_ISWAP_GATESET,
-    SYC_GATESET,
-    NAMED_GATESETS,
 )
 
 from cirq_google.workflow import (
@@ -150,6 +137,8 @@ from cirq_google.workflow import (
     SimulatedProcessorRecord,
     SimulatedProcessorWithLocalDeviceRecord,
 )
+
+from cirq_google import study
 
 from cirq_google import experimental
 

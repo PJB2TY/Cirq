@@ -42,7 +42,7 @@ class IdentityGate(raw_types.Gate):
         """Inits IdentityGate.
 
         Args:
-            num_qubits: The number of qubits for the idenity gate.
+            num_qubits: The number of qubits for the identity gate.
             qid_shape: Specifies the dimension of each qid the measurement
                 applies to.  The default is 2 for every qubit.
 
@@ -133,11 +133,6 @@ class IdentityGate(raw_types.Gate):
     def _qasm_(self, args: 'cirq.QasmArgs', qubits: Tuple['cirq.Qid', ...]) -> Optional[str]:
         args.validate_version('2.0')
         return ''.join([args.format('id {0};\n', qubit) for qubit in qubits])
-
-    def _quil_(
-        self, qubits: Tuple['cirq.Qid', ...], formatter: 'cirq.QuilFormatter'
-    ) -> Optional[str]:
-        return ''.join(formatter.format('I {0}\n', qubit) for qubit in qubits)
 
     @classmethod
     def _from_json_dict_(cls, num_qubits, qid_shape=None, **kwargs):

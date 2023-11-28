@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """An efficient simulator for Clifford circuits.
 
 Allowed operations include:
@@ -36,7 +37,7 @@ import numpy as np
 import cirq
 from cirq import protocols, value
 from cirq.protocols import act_on
-from cirq.sim import clifford, simulator, simulator_base
+from cirq.sim import clifford, simulator_base
 
 
 class CliffordSimulator(
@@ -73,7 +74,7 @@ class CliffordSimulator(
         qubits: Sequence['cirq.Qid'],
         classical_data: 'cirq.ClassicalDataStore',
     ) -> 'cirq.StabilizerChFormSimulationState':
-        """Creates the ActOnStabilizerChFormArgs for a circuit.
+        """Creates the StabilizerChFormSimulationState for a circuit.
 
         Args:
             initial_state: The initial state for the simulation in the
@@ -86,7 +87,7 @@ class CliffordSimulator(
                 simulation.
 
         Returns:
-            ActOnStabilizerChFormArgs for the circuit.
+            StabilizerChFormSimulationState for the circuit.
         """
         if isinstance(initial_state, clifford.StabilizerChFormSimulationState):
             return initial_state
@@ -109,7 +110,6 @@ class CliffordSimulator(
         measurements: Dict[str, np.ndarray],
         final_simulator_state: 'cirq.SimulationStateBase[cirq.StabilizerChFormSimulationState]',
     ):
-
         return CliffordTrialResult(
             params=params, measurements=measurements, final_simulator_state=final_simulator_state
         )
@@ -118,7 +118,6 @@ class CliffordSimulator(
 class CliffordTrialResult(
     simulator_base.SimulationTrialResultBase['clifford.StabilizerChFormSimulationState']
 ):
-    @simulator._deprecated_step_result_parameter(old_position=3)
     def __init__(
         self,
         params: 'cirq.ParamResolver',
@@ -248,22 +247,20 @@ class CliffordState:
         try:
             act_on(op, ch_form_args)
         except TypeError:
-            raise ValueError(
-                f'{str(op.gate)} cannot be run with Clifford simulator.'
-            )  # type: ignore
+            raise ValueError(f'{op.gate} cannot be run with Clifford simulator.')
         return
 
     def apply_measurement(
         self,
         op: 'cirq.Operation',
-        measurements: Dict[str, List[np.ndarray]],
+        measurements: Dict[str, List[int]],
         prng: np.random.RandomState,
         collapse_state_vector=True,
     ):
         if not isinstance(op.gate, cirq.MeasurementGate):
             raise TypeError(
-                'apply_measurement only supports cirq.MeasurementGate operations. Found %s instead.'
-                % str(op.gate)
+                f'apply_measurement only supports cirq.MeasurementGate operations. '
+                f'Found {op.gate} instead.'
             )
 
         if collapse_state_vector:

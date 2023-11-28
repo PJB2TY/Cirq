@@ -80,11 +80,7 @@ def test_circuit(boolean_str):
 
     circuit.append(hamiltonian_gate.on(*qubits))
 
-    phi = (
-        cirq.Simulator()
-        .simulate(circuit, qubit_order=qubits, initial_state=0)
-        .state_vector(copy=False)
-    )
+    phi = cirq.Simulator().simulate(circuit, qubit_order=qubits, initial_state=0).state_vector()
     actual = np.arctan2(phi.real, phi.imag) - math.pi / 2.0 > 0.0
 
     # Compare the two:
@@ -131,9 +127,7 @@ def test_gray_code_sorting(n_bits, expected_hs):
             x //= 2
         hs_template.append(tuple(sorted(h)))
 
-    for seed in range(10):
-        random.seed(seed)
-
+    for _ in range(10):
         hs = hs_template.copy()
         random.shuffle(hs)
 

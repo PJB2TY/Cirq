@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Sequence, TYPE_CHECKING, Union
+from typing import Any, Optional, Sequence, TYPE_CHECKING, Union
 
 from typing_extensions import Protocol
 
-from cirq import _compat, ops
+from cirq import ops
 from cirq._doc import doc_private
 from cirq.type_workarounds import NotImplementedType
 
@@ -86,23 +86,10 @@ class SupportsActOnQubits(Protocol):
         """
 
 
-def _fix_deprecated_args(args, kwargs):
-    kwargs['sim_state'] = kwargs['args']
-    del kwargs['args']
-    return args, kwargs
-
-
-@_compat.deprecated_parameter(
-    deadline='v0.16',
-    fix='Change argument name to `sim_state`',
-    parameter_desc='args',
-    match=lambda args, kwargs: 'args' in kwargs,
-    rewrite=_fix_deprecated_args,
-)
 def act_on(
     action: Any,
     sim_state: 'cirq.SimulationStateBase',
-    qubits: Sequence['cirq.Qid'] = None,
+    qubits: Optional[Sequence['cirq.Qid']] = None,
     *,
     allow_decompose: bool = True,
 ):
@@ -162,7 +149,7 @@ def act_on(
 
     arg_fallback = getattr(sim_state, '_act_on_fallback_', None)
     if arg_fallback is not None:
-        qubits = action.qubits if isinstance(action, ops.Operation) else qubits
+        qubits = action.qubits if is_op else qubits
         result = arg_fallback(action, qubits=qubits, allow_decompose=allow_decompose)
         if result is True:
             return

@@ -134,8 +134,7 @@ def test_intermediate_simulator():
 
     simulator.simulate_moment_steps.side_effect = steps
     circuit = mock.Mock(cirq.Circuit)
-    param_resolver = mock.Mock(cirq.ParamResolver)
-    param_resolver.param_dict = {}
+    param_resolver = cirq.ParamResolver({})
     qubit_order = mock.Mock(cirq.QubitOrder)
     result = simulator.simulate(
         program=circuit, param_resolver=param_resolver, qubit_order=qubit_order, initial_state=2
@@ -163,9 +162,7 @@ def test_intermediate_sweeps():
 
     simulator.simulate_moment_steps.side_effect = steps
     circuit = mock.Mock(cirq.Circuit)
-    param_resolvers = [mock.Mock(cirq.ParamResolver), mock.Mock(cirq.ParamResolver)]
-    for resolver in param_resolvers:
-        resolver.param_dict = {}
+    param_resolvers = [cirq.ParamResolver({}), cirq.ParamResolver({})]
     qubit_order = mock.Mock(cirq.QubitOrder)
     results = simulator.simulate_sweep(
         program=circuit, params=param_resolvers, qubit_order=qubit_order, initial_state=2
@@ -430,14 +427,12 @@ def test_monte_carlo_on_unknown_channel():
             cirq.Circuit(Reset11To00().on(*cirq.LineQubit.range(2))), initial_state=k
         )
         np.testing.assert_allclose(
-            out.state_vector(copy=False),
-            cirq.one_hot(index=k % 3, shape=4, dtype=np.complex64),
-            atol=1e-8,
+            out.state_vector(), cirq.one_hot(index=k % 3, shape=4, dtype=np.complex64), atol=1e-8
         )
 
 
 def test_iter_definitions():
-    dummy_trial_result = SimulationTrialResult(params={}, measurements={}, final_simulator_state=[])
+    mock_trial_result = SimulationTrialResult(params={}, measurements={}, final_simulator_state=[])
 
     class FakeNonIterSimulatorImpl(
         SimulatesAmplitudes, SimulatesExpectationValues, SimulatesFinalState
@@ -474,7 +469,7 @@ def test_iter_definitions():
             qubit_order: cirq.QubitOrderOrList = cirq.QubitOrder.DEFAULT,
             initial_state: Any = None,
         ) -> List[SimulationTrialResult]:
-            return [dummy_trial_result]
+            return [mock_trial_result]
 
     non_iter_sim = FakeNonIterSimulatorImpl()
     q0 = cirq.LineQubit(0)
@@ -490,9 +485,9 @@ def test_iter_definitions():
     ev_iter = non_iter_sim.simulate_expectation_values_sweep_iter(circuit, obs, params)
     assert next(ev_iter) == [1.0]
 
-    assert non_iter_sim.simulate_sweep(circuit, params) == [dummy_trial_result]
+    assert non_iter_sim.simulate_sweep(circuit, params) == [mock_trial_result]
     state_iter = non_iter_sim.simulate_sweep_iter(circuit, params)
-    assert next(state_iter) == dummy_trial_result
+    assert next(state_iter) == mock_trial_result
 
 
 def test_missing_iter_definitions():
@@ -528,74 +523,8 @@ def test_missing_iter_definitions():
 
 def test_trial_result_initializer():
     resolver = cirq.ParamResolver()
-    step = mock.Mock(cirq.StepResultBase)
-    step._simulator_state.return_value = 1
     state = 3
-    with pytest.raises(ValueError, match='Exactly one of'):
-        _ = SimulationTrialResult(resolver, {}, None, None)
-    with pytest.raises(ValueError, match='Exactly one of'):
-        _ = SimulationTrialResult(resolver, {}, state, step)
-    with pytest.raises(ValueError, match='Exactly one of'):
-        _ = SimulationTrialResult(resolver, {}, final_simulator_state=None, final_step_result=None)
-    with pytest.raises(ValueError, match='Exactly one of'):
-        _ = SimulationTrialResult(resolver, {}, final_simulator_state=state, final_step_result=step)
-    with cirq.testing.assert_deprecated(deadline='v0.16'):
-        x = SimulationTrialResult(resolver, {}, final_step_result=step)
-        assert x._final_simulator_state == 1
-    with cirq.testing.assert_deprecated(deadline='v0.16'):
-        x = SimulationTrialResult(resolver, {}, None, final_step_result=step)
-        assert x._final_simulator_state == 1
-    with cirq.testing.assert_deprecated(deadline='v0.16'):
-        x = SimulationTrialResult(resolver, {}, None, step)
-        assert x._final_simulator_state == 1
-    with cirq.testing.assert_deprecated(deadline='v0.16'):
-        x = SimulationTrialResult(resolver, {}, final_simulator_state=None, final_step_result=step)
-        assert x._final_simulator_state == 1
     x = SimulationTrialResult(resolver, {}, state)
     assert x._final_simulator_state == 3
     x = SimulationTrialResult(resolver, {}, final_simulator_state=state)
     assert x._final_simulator_state == 3
-
-
-def test_deprecated_create_act_on_args():
-    class DeprecatedSim(cirq.SimulatesIntermediateState):
-        def _create_act_on_args(self, initial_state, qubits):
-            return 0
-
-        def _core_iterator(self, circuit, sim_state):
-            pass
-
-        def _create_simulator_trial_result(self):
-            pass
-
-    sim = DeprecatedSim()
-    with cirq.testing.assert_deprecated(deadline='v0.16', count=2):
-        sim.simulate_moment_steps(cirq.Circuit())
-
-
-def test_deprecated_qubits_param():
-    class Sim(cirq.SimulatesIntermediateState):
-        def _create_simulation_state(self, initial_state, qubits):
-            return 0
-
-        def _core_iterator(self, circuit, sim_state):
-            pass
-
-        def _create_simulator_trial_result(self):
-            pass
-
-    with cirq.testing.assert_deprecated(
-        '`qubits` parameter of `_base_iterator', deadline='v0.16', count=2
-    ):
-        Sim()._base_iterator(cirq.Circuit(), cirq.QubitOrder.explicit([]), 0)
-
-
-def test_deprecated_setters():
-    step = FakeStepResult()
-    result = cirq.SimulationTrialResult(cirq.ParamResolver(), {}, 0)
-    with cirq.testing.assert_deprecated(deadline='v0.16'):
-        step.measurements = {}
-    with cirq.testing.assert_deprecated(deadline='v0.16'):
-        result.measurements = {}
-    with cirq.testing.assert_deprecated(deadline='v0.16'):
-        result.params = cirq.ParamResolver()
